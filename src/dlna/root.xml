@@ -1,0 +1,43 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<root xmlns="urn:schemas-upnp-org:device-1-0">
+	<specVersion><major>1</major><minor>0</minor></specVersion>
+	<device>
+		<deviceType>urn:schemas-upnp-org:device:MediaServer:1</deviceType>
+		<friendlyName>rustymedia</friendlyName>
+		<manufacturer>Kevin Cox</manufacturer>
+		<manufacturerURL>https://kevincox.ca</manufacturerURL>
+		<modelDescription>model</modelDescription>
+		<modelName>rustymedia</modelName>
+		<modelNumber>1</modelNumber>
+		<modelURL>https://kevincox/ca</modelURL>
+		<serialNumber>1</serialNumber>
+		<UDN>uuid:06289e13-a832-4d76-be0b-00151d439863</UDN>
+		<dlna:X_DLNADOC xmlns:dlna="urn:schemas-dlna-org:device-1-0">DMS-1.50</dlna:X_DLNADOC>
+		<presentationURL>/</presentationURL>
+		<iconList>
+			<!-- <icon> -->
+			<!-- 	<mimetype>image/png</mimetype> -->
+			<!-- 	<width>460</width> -->
+			<!-- 	<height>460</height> -->
+			<!-- 	<depth>24</depth> -->
+			<!-- 	<url>/icon.png</url> -->
+			<!-- </icon> -->
+		</iconList>
+		<serviceList>
+			<service>
+				<serviceType>urn:schemas-upnp-org:service:ContentDirectory:1</serviceType>
+				<serviceId>urn:upnp-org:serviceId:ContentDirectory</serviceId>
+				<controlURL>/content/control</controlURL>
+				<eventSubURL>/events/content</eventSubURL>
+				<SCPDURL>/content/desc.xml</SCPDURL>
+			</service>
+			<service>
+				<serviceType>urn:schemas-upnp-org:service:ConnectionManager:1</serviceType>
+				<serviceId>urn:upnp-org:serviceId:ConnectionManager</serviceId>
+				<controlURL>/connection/control</controlURL>
+				<eventSubURL>/events/connection</eventSubURL>
+				<SCPDURL>/connection/desc.xml</SCPDURL>
+			</service>
+		</serviceList>
+	</device>
+</root>
