@@ -78,11 +78,12 @@ pub struct DidlLite {
 	pub xmlns_dc: &'static str,
 	#[serde(rename="xmlns:upnp")]
 	pub xmlns_upnp: &'static str,
-	pub container: Vec<Container>,
+	pub containers: Vec<Container>,
+	pub items: Vec<Item>,
 }
 
 #[derive(Debug,Serialize)]
-#[serde(rename="container", rename_all="camelCase")]
+#[serde(rename="container",rename_all="camelCase")]
 pub struct Container {
 	pub id: String,
 	pub child_count: u64,
@@ -95,15 +96,35 @@ pub struct Container {
 	pub title: String,
 	#[serde(rename="upnp:class")]
 	pub class: &'static str,
-	// pub res: Vec<Res>,
 	
 	// #[serde(rename="albumArtURI")]
 	// pub album_art_uri: Vec<AlbumArtUri>,
 }
 
 #[derive(Debug,Serialize)]
-#[serde(rename_all="camelCase")]
+#[serde(rename="item",rename_all="camelCase")]
+pub struct Item {
+	pub id: String,
+	#[serde(rename="parentID")]
+	pub parent_id: String,
+	pub restricted: bool,
+	
+	pub res: Vec<Res>,
+	
+	#[serde(rename="dc:title")]
+	pub title: String,
+	#[serde(rename="upnp:class")]
+	pub class: &'static str,
+}
+
+#[derive(Debug,Serialize)]
+#[serde(rename="res",rename_all="camelCase")]
 pub struct Res {
+	// pub size: u64,
+	
+	// Resolution in XXXxYYYY format.
+	// pub resolution: String,
+	
 	pub protocol_info: String,
 	pub uri: ::xml::Body<String>,
 }

@@ -47,9 +47,7 @@ impl ::Object for Arc<Root> {
 		
 		let split = match id.find('/') {
 			Some(i) => i,
-			None => return Err(
-				::ErrorKind::Invalid(format!(
-					"No slash in id {:?}", id)).into())
+			None => id.len(),
 		};
 		let first = &id[0..split];
 		let suffix = &id[split+1..];

@@ -58,7 +58,7 @@ pub fn schedule_presence_broadcasts(handle: tokio_core::reactor::Handle, uri: hy
 	
 	handle.spawn(tokio_core::reactor::Interval::new_at(
 		std::time::Instant::now(),
-		std::time::Duration::from_secs(6),
+		std::time::Duration::from_secs(60),
 		&handle).unwrap()
 		.for_each(move |_|
 			broadcast_presence()

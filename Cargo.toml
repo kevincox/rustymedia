@@ -2,13 +2,17 @@
 authors = ["Kevin Cox <kevincox@kevincox.ca>"]
 name = "rustymedia"
 version = "0.1.0"
-
 [dependencies]
-error-chain = "0.10.0"
+bytes = "0.4.5"
+env_logger = "0.4.3"
+error-chain = "0.11.0"
 futures = "0.1.15"
 hyper = "0.11.2"
 libc = "0.2.30"
+percent-encoding = "1.0.0"
 serde = "1.0.11"
 serde-xml-rs = "0.2.1"
 serde_derive = "1.0.11"
 tokio-core = "0.1.9"
+tokio-file-unix = "0.4.0"
+tokio-io = "0.1.3"

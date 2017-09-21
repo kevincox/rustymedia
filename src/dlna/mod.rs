@@ -1,5 +1,6 @@
 use futures::{Future, Stream};
 use hyper;
+use percent_encoding;
 use serde;
 use serde_xml_rs;
 use std;
@@ -27,6 +28,13 @@ impl Request {
 	}
 	
 	fn path(&self) -> &str { &self.req.path()[self.path_offset..] }
+	
+	fn decoded_path(&self) -> ::Result<String> {
+		percent_encoding::percent_decode(self.path().as_bytes())
+			.decode_utf8()
+			.chain_err(|| "Error percent-decoding path to utf8")
+			.map(|s| s.to_string())
+	}
 	
 	fn pop(&mut self) -> &str {
 		let next_chunk_start = self.path_offset;

@@ -1,9 +1,10 @@
 use error_chain::ChainedError;
 use futures;
-use futures::{Future};
+use futures::{Future, Sink, Stream};
 use hyper;
 use serde;
 use std;
+use tokio_core;
 
 use ::Object;
 use dlna;
@@ -16,6 +17,7 @@ const CONTENT_XML: &str = include_str!("content.xml");
 header! { (Soapaction, "Soapaction") => [String] }
 
 pub struct Server {
+	pub handle: tokio_core::reactor::Handle,
 	pub root: std::sync::Arc<::root::Root>,
 }
 
@@ -34,6 +36,7 @@ impl Server {
 			}
 			"connection" => self.call_connection(req),
 			"content" => self.call_content(req),
+			"video" => self.call_video(req),
 			_ => call_not_found(req),
 		}
 	}
@@ -70,42 +73,28 @@ impl Server {
 		match &action[..] {
 			"Browse" => {
 				let root = self.root.clone();
-				Box::new(req.to_xml()
-					.and_then(move |x| {
-						let body: dlna::types::Body = x.body;
-						eprintln!("{:?}", body);
-						
-						let object = root.lookup(&body.browse.object_id)?;
-						
-						let entries = object.children()?.iter()
-							.map(|child| dlna::types::Container {
-								parent_id: "0".to_string(),
-								id: child.id().to_string(),
-								title: child.title(),
-								restricted: true,
-								child_count: 0,
-								class: child.dlna_class(),
-								_start_body: ::xml::Body(()),
-							}).collect();
-						
-						respond_soap(dlna::types::BodyBrowseResponse {
-							browse_response: dlna::types::BrowseResponse {
-								number_returned: 1,
-								total_matches: 1,
-								update_id: 1,
-								result: dlna::types::Result(dlna::types::DidlLite {
-									xmlns: "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
-									xmlns_dc: "http://purl.org/dc/elements/1.1/",
-									xmlns_upnp: "urn:schemas-upnp-org:metadata-1-0/upnp/",
-									container: entries,
-								}),
-							},
-						})
-					}))
-				
+				Box::new(req.to_xml().and_then(move |x| call_dlna_browse(root, x.body)))
 			}
 			other => respond_soap_fault(&format!("Unknown action {:?}", other)),
 		}
+	}
+	
+	fn call_video(&self, req: dlna::Request) -> BoxedResponse {
+		let content = req.decoded_path()
+			.and_then(|path| self.root.lookup(&path))
+			.and_then(|entry| entry.body(self.handle.clone()));
+		
+		let content = match content {
+			Ok(c) => c,
+			Err(e) => return Box::new(futures::future::result(Err(e))),
+		};
+		
+		let content = content.map(|b| Ok(b.into())).map_err(|e| e.into());
+		
+		let (sender, body) = hyper::Body::pair();
+		Box::new(sender.send_all(content)
+			.map(move |_| hyper::Response::new().with_body(body))
+			.then(|e| e.chain_err(|| "Error sending")))
 	}
 }
 
@@ -150,6 +139,57 @@ fn call_method_not_allowed(req: dlna::Request) -> BoxedResponse {
 		hyper::Response::new()
 			.with_status(hyper::StatusCode::MethodNotAllowed))
 }
+	
+fn call_dlna_browse(
+	root: std::sync::Arc<::root::Root>, body: dlna::types::Body)
+	-> ::Result<hyper::Response>
+{
+	let object = root.lookup(&body.browse.object_id)?;
+	
+	let mut containers = Vec::new();
+	let mut items = Vec::new();
+	for entry in object.children()?.iter() {
+		match entry.is_dir() {
+			true => containers.push(dlna::types::Container {
+				parent_id: entry.parent_id().to_string(),
+				id: entry.id().to_string(),
+				title: entry.title(),
+				restricted: true,
+				child_count: 0,
+				class: entry.dlna_class(),
+				_start_body: ::xml::Body(()),
+			}),
+			false => items.push(dlna::types::Item {
+				parent_id: entry.parent_id().to_string(),
+				id: entry.id().to_string(),
+				title: entry.title(),
+				restricted: true,
+				class: entry.dlna_class(),
+				res: vec![
+					dlna::types::Res {
+						protocol_info: "http-get:*:video/x-matroska:*".to_string(),
+						uri: ::xml::Body(format!("http://192.168.0.52:8080/video/{}", entry.id())),
+					},
+				],
+			}),
+		}
+	}
+	
+	respond_soap(dlna::types::BodyBrowseResponse {
+		browse_response: dlna::types::BrowseResponse {
+			number_returned: 1,
+			total_matches: 1,
+			update_id: 1,
+			result: dlna::types::Result(dlna::types::DidlLite {
+				xmlns: "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
+				xmlns_dc: "http://purl.org/dc/elements/1.1/",
+				xmlns_upnp: "urn:schemas-upnp-org:metadata-1-0/upnp/",
+				containers: containers,
+				items: items,
+			}),
+		},
+	})
+}
 
 type BoxedResponse = Box<futures::Future<Item = hyper::Response, Error = ::error::Error>>;
 
@@ -163,7 +203,7 @@ impl hyper::server::Service for Server {
 		eprintln!("{:?}", req);
 		let req = dlna::Request::new(req);
 		Box::new(self.call_root(req).or_else(|e| {
-			eprintln!("{}", ::error::Error::with_chain(e, "Error processing request.").display());
+			eprintln!("{}", e.display_chain());
 			Ok(hyper::Response::new()
 				.with_status(hyper::StatusCode::InternalServerError)
 				.with_body("Internal Error"))

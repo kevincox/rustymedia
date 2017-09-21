@@ -1,6 +1,7 @@
 use std;
 use std::sync::Arc;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
+use tokio_core;
 
 use error::{ResultExt};
 
@@ -57,7 +58,17 @@ impl ::Object for Object {
 		}
 	}
 	
-	fn dlna_class(&self) -> &'static str { "object.container.storageFolder" }
+	fn dlna_class(&self) -> &'static str {
+		if self.is_dir() { return "object.container.storageFolder" }
+		
+		match self.path.extension().and_then(std::ffi::OsStr::to_str) {
+			Some("mkv") => "object.item.videoItem",
+			_ => {
+				eprintln!("Don't know class for {:?}", self.path);
+				"object.item.textItem"
+			}
+		}
+	}
 	
 	fn title(&self) -> String {
 		self.path.file_name()
@@ -76,13 +87,18 @@ impl ::Object for Object {
 	fn children(&self) -> ::error::Result<Vec<Box<::Object>>> {
 		self.path.read_dir()
 			.chain_err(|| "Getting children of local directory.")?
-			.inspect(|d| eprintln!("Direntry: {:?}", d))
 			.map(|result| result
 				.chain_err(|| "Reading next direntry")
 				.and_then(|entry| {
 					Self::new_boxed(self.root.clone(), entry.path())
 				}))
 			.collect()
+	}
+	
+	fn body(&self, _handle: tokio_core::reactor::Handle) -> ::Result<::ByteStream> {
+		let file = std::fs::File::open(&self.path)
+			.chain_err(|| format!("Error opening {:?}", self.path))?;
+		Ok(Box::new(::ReadStream(file)))
 	}
 }
 
