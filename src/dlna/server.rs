@@ -1,6 +1,8 @@
 use error_chain::ChainedError;
 use futures;
 use futures::{Future, Sink, Stream};
+use futures::future::{Executor};
+use futures_cpupool;
 use hyper;
 use serde;
 use std;
@@ -19,6 +21,7 @@ header! { (Soapaction, "Soapaction") => [String] }
 pub struct Server {
 	pub handle: tokio_core::reactor::Handle,
 	pub root: std::sync::Arc<::root::Root>,
+	pub cpupool: std::sync::Arc<futures_cpupool::CpuPool>,
 }
 
 impl Server {
@@ -36,7 +39,7 @@ impl Server {
 			}
 			"connection" => self.call_connection(req),
 			"content" => self.call_content(req),
-			"video" => self.call_video(req),
+			"video" => Box::new(futures::future::result(self.call_video(req))),
 			_ => call_not_found(req),
 		}
 	}
@@ -79,22 +82,21 @@ impl Server {
 		}
 	}
 	
-	fn call_video(&self, req: dlna::Request) -> BoxedResponse {
-		let content = req.decoded_path()
-			.and_then(|path| self.root.lookup(&path))
-			.and_then(|entry| entry.body(self.handle.clone()));
-		
-		let content = match content {
-			Ok(c) => c,
-			Err(e) => return Box::new(futures::future::result(Err(e))),
-		};
-		
-		let content = content.map(|b| Ok(b.into())).map_err(|e| e.into());
+	fn call_video(&self, req: dlna::Request) -> ::Result<hyper::Response> {
+		let path = req.decoded_path()?;
+		let entry = self.root.lookup(&path)?;
+		let content = entry.body(self.handle.clone())?
+			.map(|c| Ok(c.into()))
+			.map_err(|e| e.into());
 		
 		let (sender, body) = hyper::Body::pair();
-		Box::new(sender.send_all(content)
-			.map(move |_| hyper::Response::new().with_body(body))
-			.then(|e| e.chain_err(|| "Error sending")))
+		self.cpupool.execute(
+			sender.send_all(content)
+				.map(|_| ())
+				.map_err(|e| { eprintln!("Error sending: {:?}", e); }))
+			.map_err::<::Error,_>(|_| ::ErrorKind::ExecuteError.into())?;
+		
+		Ok(hyper::Response::new().with_body(body))
 	}
 }
 

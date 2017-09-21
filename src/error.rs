@@ -4,6 +4,7 @@ use std;
 error_chain!{
 	errors {
 		Invalid(msg: String)
+		ExecuteError
 		NotADirectory(path: std::path::PathBuf)
 		NotAFile(path: String)
 		NotFound(msg: String)

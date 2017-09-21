@@ -1,4 +1,5 @@
 extern crate env_logger;
+extern crate futures_cpupool;
 extern crate hyper;
 extern crate rustymedia;
 extern crate tokio_core;
@@ -23,6 +24,8 @@ fn result_main() -> rustymedia::Result<()> {
 		"Downloads".to_string(),"/home/kevincox/Downloads")?);
 	let root = Arc::new(root);
 	
+	let cpupool = Arc::new(futures_cpupool::CpuPool::new(2));
+	
 	let handle: Arc<Mutex<Option<tokio_core::reactor::Remote>>> =
 		Arc::new(std::sync::Mutex::new(None));
 	
@@ -30,6 +33,7 @@ fn result_main() -> rustymedia::Result<()> {
 	let service = move || Ok(rustymedia::dlna::server::Server {
 		root: root.clone(),
 		handle: service_handle.lock().unwrap().as_ref().unwrap().handle().unwrap(),
+		cpupool: cpupool.clone(),
 	});
 	
 	let uri = "192.168.0.52:8080".parse().unwrap();
