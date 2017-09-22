@@ -1,27 +1,49 @@
+extern crate docopt;
 extern crate env_logger;
 extern crate futures_cpupool;
 extern crate hyper;
 extern crate rustymedia;
+#[macro_use] extern crate serde_derive;
 extern crate tokio_core;
 
 use std::sync::{Arc, Mutex};
 
-fn env(k: &str, default: &str) -> String {
-	match std::env::var(k) {
-		Ok(s) => s,
-		Err(std::env::VarError::NotPresent) => default.into(),
-		Err(std::env::VarError::NotUnicode(_)) => {
-			panic!("The environemnt variable {:?} isn't valid UTF8", k)
-		},
-	}
+const USAGE: &str = "
+Usage: rustymedia [options]
+
+Folder Configuration:
+	-l --local=<mapping>  Map a local path to be served.
+		The <mapping> argument should be in the form <name>=<path> where
+		everything until the first `=` is treated as the name and the rest as
+		the path.
+		
+Server Options:
+	-b --bind=<addr>  Serving socket bind address [default: [::]:4950].
+";
+
+#[derive(Deserialize)]
+struct Args {
+	flag_bind: std::net::SocketAddr,
+	flag_local: Vec<String>,
 }
 
 fn result_main() -> rustymedia::Result<()> {
-	let bind = env("RM_BIND", "0.0.0.0:8080");
+	let args: Args = docopt::Docopt::new(USAGE)
+		.and_then(|d| d.deserialize())
+		.unwrap_or_else(|e| e.exit());
 	
 	let mut root = rustymedia::root::Root::new();
-	root.add(rustymedia::local::Object::new_root(
-		"Downloads".to_string(),"/home/kevincox/Downloads")?);
+	
+	for mapping in args.flag_local {
+		let i = mapping.find('=').expect("No `=` found in --local mapping");
+		
+		root.add(rustymedia::local::Object::new_root(
+			mapping[..i].to_string(), mapping[i+1..].to_string())?);
+	}
+	
+	if root.is_empty() {
+		panic!("No folders configured.");
+	}
 	let root = Arc::new(root);
 	
 	let cpupool = Arc::new(futures_cpupool::CpuPool::new(2));
@@ -36,15 +58,14 @@ fn result_main() -> rustymedia::Result<()> {
 		cpupool: cpupool.clone(),
 	});
 	
-	let uri = "192.168.0.52:8080".parse().unwrap();
-	
 	let server = hyper::server::Http::new()
-		.bind(&bind.parse().unwrap(), service).unwrap();
+		.bind(&args.flag_bind, service).unwrap();
 	
 	*handle.lock().unwrap() = Some(server.handle().remote().clone());
 	
-	println!("Listening on http://{}/", bind);
-	rustymedia::dlna::discovery::schedule_presence_broadcasts(server.handle(), uri);
+	println!("Listening on http://{}/", args.flag_bind);
+	rustymedia::dlna::discovery::schedule_presence_broadcasts(
+		server.handle(), args.flag_bind);
 	server.run().unwrap();
 	println!("Done.");
 	

@@ -93,10 +93,13 @@ impl Server {
 		self.cpupool.execute(
 			sender.send_all(content)
 				.map(|_| ())
-				.map_err(|e| { eprintln!("Error sending: {:?}", e); }))
+				.map_err(|e| { eprintln!("Error sending video: {:?}", e); }))
 			.map_err::<::Error,_>(|_| ::ErrorKind::ExecuteError.into())?;
 		
-		Ok(hyper::Response::new().with_body(body))
+		let mut response = hyper::Response::new();
+		// response.headers_mut().set(hyper::header::ContentLength(1000000000));
+		response.set_body(body);
+		Ok(response)
 	}
 }
 

@@ -4,6 +4,7 @@ extern crate futures_cpupool;
 #[macro_use] extern crate error_chain;
 #[macro_use] extern crate hyper;
 extern crate percent_encoding;
+extern crate pnet;
 #[macro_use] extern crate serde_derive;
 extern crate serde;
 extern crate serde_xml_rs;
@@ -28,10 +29,12 @@ impl<T: std::io::Read> futures::Stream for ReadStream<T> {
 	type Error = Error;
 	
 	fn poll(&mut self) -> futures::Poll<Option<Self::Item>, Error> {
-		let buf_size = 4 * 1024;
+		let buf_size = 16 * 4 * 1024;
 		let mut buf = Vec::with_capacity(buf_size);
 		unsafe { buf.set_len(buf_size); }
 		let len = self.0.read(&mut buf)?;
+		unsafe { buf.set_len(len); }
+		// eprintln!("READ: {}/{} ({})", len, buf_size, len as f64 / buf_size as f64);
 		
 		if len == 0 {
 			Ok(futures::Async::Ready(None))

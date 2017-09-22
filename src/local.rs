@@ -81,7 +81,16 @@ impl ::Object for Object {
 	fn lookup(&self, id: &str) -> ::Result<Box<::Object>> {
 		debug_assert_eq!(self.path, self.root.path);
 		
-		Self::new_boxed(self.root.clone(), self.path.join(id))
+		let mut base = self.path.clone();
+		let safepath = std::path::Path::new(id)
+			.iter()
+			.filter(|c| c != &"..")
+			.map(|osstr| std::path::Path::new(osstr));
+		base.extend(safepath);
+		
+		eprintln!("Lookup: {:?}", base);
+		
+		Self::new_boxed(self.root.clone(), base)
 	}
 	
 	fn children(&self) -> ::error::Result<Vec<Box<::Object>>> {
@@ -96,9 +105,23 @@ impl ::Object for Object {
 	}
 	
 	fn body(&self, _handle: tokio_core::reactor::Handle) -> ::Result<::ByteStream> {
-		let file = std::fs::File::open(&self.path)
-			.chain_err(|| format!("Error opening {:?}", self.path))?;
-		Ok(Box::new(::ReadStream(file)))
+		let cmd = std::process::Command::new("ffmpeg")
+			.stdin(std::process::Stdio::null())
+			.stdout(std::process::Stdio::piped())
+			.arg("-nostdin")
+			.arg("-i").arg(self.path.clone())
+			.arg("-c:v").arg("copy")
+			.arg("-c:a").arg("aac")
+			.arg("-f").arg("matroska")
+			.arg("pipe:")
+			.spawn()
+			.chain_err(|| "Error executing ffmpeg")?;
+		
+		// let file = std::fs::File::open(&self.path)
+		// 	.chain_err(|| format!("Error opening {:?}", self.path))?;
+		// let metadata = file.metadata()
+		// 	.chain_err(|| format!("Error getting metadata for {:?}", self.path))?;
+		Ok(Box::new(::ReadStream(cmd.stdout.unwrap())))
 	}
 }
 

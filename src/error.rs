@@ -5,9 +5,9 @@ error_chain!{
 	errors {
 		Invalid(msg: String)
 		ExecuteError
-		NotADirectory(path: std::path::PathBuf)
-		NotAFile(path: String)
-		NotFound(msg: String)
+		NotADirectory(path: std::path::PathBuf) { display("Not a directory: {:?}", path) }
+		NotAFile(path: String) { display("Not a file: {:?}", path) }
+		NotFound(msg: String) { display("Not found: {}", msg) }
 		Other(msg: String)
 		Unimplemented(msg: &'static str)
 	}

@@ -12,6 +12,8 @@ impl Root {
 		}
 	}
 	
+	pub fn is_empty(&self) -> bool { self.items.is_empty() }
+	
 	pub fn add<T: 'static + ::Object>(&mut self, object: T) {
 		self.add_boxed(Box::new(object))
 	}
@@ -45,12 +47,10 @@ impl ::Object for Arc<Root> {
 			return Ok(Box::new(self.clone()))
 		}
 		
-		let split = match id.find('/') {
-			Some(i) => i,
-			None => id.len(),
+		let (first, suffix) = match id.find('/') {
+			Some(i) => (&id[..i], &id[i+1..]),
+			None => (id, ""),
 		};
-		let first = &id[0..split];
-		let suffix = &id[split+1..];
 		
 		match self.items.get(first) {
 			Some(obj) => obj.lookup(suffix),
