@@ -50,7 +50,7 @@ impl Request {
 		};
 		
 		let next_chunk = &self.req.path()[next_chunk_start..next_chunk_end];
-		// eprintln!("Pop {:?} from {:?}", next_chunk, self.path());
+		// println!("Pop {:?} from {:?}", next_chunk, self.path());
 		return next_chunk
 	}
 	
@@ -77,11 +77,11 @@ impl Request {
 	{
 		Box::new(self.body_vec()
 			.and_then(|v| {
-				eprintln!("Parsing xml: {}", String::from_utf8_lossy(&v));
+				println!("Parsing xml: {}", String::from_utf8_lossy(&v));
 				serde_xml_rs::deserialize(&v[..])
 					.chain_err(||
 						format!("Error parsing xml:\n{}", String::from_utf8_lossy(&v)))
 			})
-			.inspect(|xml| eprintln!("Request: {:#?}", xml)))
+			.inspect(|xml| println!("Request: {:#?}", xml)))
 	}
 }

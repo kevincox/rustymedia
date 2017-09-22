@@ -12,6 +12,7 @@ extern crate tokio_core;
 extern crate tokio_file_unix;
 extern crate tokio_io;
 
+mod config;
 pub mod dlna;
 mod error;
 pub mod local;
@@ -34,7 +35,7 @@ impl<T: std::io::Read> futures::Stream for ReadStream<T> {
 		unsafe { buf.set_len(buf_size); }
 		let len = self.0.read(&mut buf)?;
 		unsafe { buf.set_len(len); }
-		// eprintln!("READ: {}/{} ({})", len, buf_size, len as f64 / buf_size as f64);
+		// println!("READ: {}/{} ({})", len, buf_size, len as f64 / buf_size as f64);
 		
 		if len == 0 {
 			Ok(futures::Async::Ready(None))

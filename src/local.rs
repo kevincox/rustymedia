@@ -52,7 +52,7 @@ impl ::Object for Object {
 		match self.id.rfind('/') {
 			Some(i) => &self.id[0..i],
 			None => {
-				eprintln!("Can't find parent ID");
+				println!("Can't find parent ID");
 				"0"
 			}
 		}
@@ -64,7 +64,7 @@ impl ::Object for Object {
 		match self.path.extension().and_then(std::ffi::OsStr::to_str) {
 			Some("mkv") => "object.item.videoItem",
 			_ => {
-				eprintln!("Don't know class for {:?}", self.path);
+				println!("Don't know class for {:?}", self.path);
 				"object.item.textItem"
 			}
 		}
@@ -88,7 +88,7 @@ impl ::Object for Object {
 			.map(|osstr| std::path::Path::new(osstr));
 		base.extend(safepath);
 		
-		eprintln!("Lookup: {:?}", base);
+		println!("Lookup: {:?}", base);
 		
 		Self::new_boxed(self.root.clone(), base)
 	}
@@ -105,7 +105,7 @@ impl ::Object for Object {
 	}
 	
 	fn body(&self, _handle: tokio_core::reactor::Handle) -> ::Result<::ByteStream> {
-		let cmd = std::process::Command::new("ffmpeg")
+		let cmd = std::process::Command::new(::config::FFMPEG_BINARY())
 			.stdin(std::process::Stdio::null())
 			.stdout(std::process::Stdio::piped())
 			.arg("-nostdin")

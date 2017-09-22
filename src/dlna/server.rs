@@ -93,7 +93,7 @@ impl Server {
 		self.cpupool.execute(
 			sender.send_all(content)
 				.map(|_| ())
-				.map_err(|e| { eprintln!("Error sending video: {:?}", e); }))
+				.map_err(|e| { println!("Error sending video: {:?}", e); }))
 			.map_err::<::Error,_>(|_| ::ErrorKind::ExecuteError.into())?;
 		
 		let mut response = hyper::Response::new();
@@ -110,16 +110,16 @@ fn respond_ok(res: hyper::Response) -> BoxedResponse {
 fn respond_soap<T: serde::Serialize + std::fmt::Debug>
 	(body: T) -> ::error::Result<hyper::Response>
 {
-	eprintln!("Responding with: {:#?}", body);
+	println!("Responding with: {:#?}", body);
 	let mut buf = Vec::new();
 	::xml::serialize(&mut buf, dlna::types::Envelope{body})
 		.chain_err(|| "Error serializing XML.")?;
-	eprintln!("Emitting xml: {}", String::from_utf8_lossy(&buf));
+	println!("Emitting xml: {}", String::from_utf8_lossy(&buf));
 	Ok(hyper::Response::new().with_body(buf))
 }
 
 fn respond_soap_fault(msg: &str) -> BoxedResponse {
-	eprintln!("Reporting fault via soap: {:?}", msg);
+	println!("Reporting fault via soap: {:?}", msg);
 	Box::new(futures::future::result(respond_soap(dlna::types::BodyFault {
 		fault: dlna::types::Fault {
 			faultcode: "SOAP-ENV:Client",
@@ -139,7 +139,7 @@ fn call_not_found(req: dlna::Request) -> BoxedResponse {
 }
 
 fn call_method_not_allowed(req: dlna::Request) -> BoxedResponse {
-	eprintln!("405 {:?}", req.req);
+	println!("405 {:?}", req.req);
 	respond_ok(
 		hyper::Response::new()
 			.with_status(hyper::StatusCode::MethodNotAllowed))
@@ -205,10 +205,10 @@ impl hyper::server::Service for Server {
 	type Future = Box<futures::Future<Item=hyper::Response, Error=hyper::Error>>;
 	
 	fn call(&self, req: Self::Request) -> Self::Future {
-		eprintln!("{:?}", req);
+		println!("{:?}", req);
 		let req = dlna::Request::new(req);
 		Box::new(self.call_root(req).or_else(|e| {
-			eprintln!("{}", e.display_chain());
+			println!("{}", e.display_chain());
 			Ok(hyper::Response::new()
 				.with_status(hyper::StatusCode::InternalServerError)
 				.with_body("Internal Error"))
