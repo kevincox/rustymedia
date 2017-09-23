@@ -132,7 +132,7 @@ fn call_not_found(req: dlna::Request) -> BoxedResponse {
 	let prefix = format!("404 {:?}", req.req);
 	Box::new(req.body_str_lossy()
 		.and_then(move |body| {
-			eprint!("{}\n{}\n404 End\n", prefix, body);
+			println!("{}\n{}\n404 End\n", prefix, body);
 			Ok(hyper::Response::new()
 				.with_status(hyper::StatusCode::NotFound))
 		}))

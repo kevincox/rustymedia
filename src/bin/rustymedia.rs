@@ -9,16 +9,21 @@ extern crate tokio_core;
 use std::sync::{Arc, Mutex};
 
 const USAGE: &str = "
-Usage: rustymedia [options]
+Usage:
+	rustymedia [options]
+	rustymedia --help
 
 Folder Configuration:
-	-l --local=<mapping>  Map a local path to be served.
+	-l --local=<mapping> ...  Map a local path to be served.
 		The <mapping> argument should be in the form <name>=<path> where
 		everything until the first `=` is treated as the name and the rest as
 		the path.
 		
 Server Options:
 	-b --bind=<addr>  Serving socket bind address [default: [::]:4950].
+
+Other Options:
+	-h --help  Show this help.
 ";
 
 #[derive(Deserialize)]
