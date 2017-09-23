@@ -10,9 +10,8 @@ pub fn schedule_presence_broadcasts(
 	handle: tokio_core::reactor::Handle,
 	addr: std::net::SocketAddr)
 {
-	let broadcast_address = "239.255.255.250:1900";
-	let socket = std::net::UdpSocket::bind(broadcast_address).unwrap();
-	socket.connect(broadcast_address).unwrap();
+	let socket = std::net::UdpSocket::bind("[::]:0").unwrap();
+	socket.connect("239.255.255.250:1900").unwrap();
 	let socket = std::rc::Rc::new(socket);
 	
 	if addr.ip().is_unspecified() {
@@ -65,7 +64,7 @@ fn schedule_presence_broadcasts_for_address(
 	};
 	
 	let broadcast_presence = move || -> ::error::Result<()> {
-		println!("Broadcasting presence.");
+		// println!("Broadcasting presence.");
 		
 		// Spec recommends sending each packet 3 times. One seems fine for now.
 		for _ in 0..1 {
