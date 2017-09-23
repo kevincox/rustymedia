@@ -1,3 +1,4 @@
+use bytes;
 use error_chain::ChainedError;
 use futures;
 use futures::{Future, Sink, Stream};
@@ -12,19 +13,76 @@ use ::Object;
 use dlna;
 use error::{ResultExt};
 
-const ROOT_XML: &str = include_str!("root.xml");
 const CONNECTION_XML: &str = include_str!("connection.xml");
 const CONTENT_XML: &str = include_str!("content.xml");
 
 header! { (Soapaction, "Soapaction") => [String] }
 
-pub struct Server {
-	pub handle: tokio_core::reactor::Handle,
+pub struct ServerArgs<F> {
+	pub uri: String,
+	pub remote: F,
 	pub root: std::sync::Arc<::root::Root>,
-	pub cpupool: std::sync::Arc<futures_cpupool::CpuPool>,
+	pub uuid: String,
+}
+
+pub struct ServerFactory<F> {
+	uri: String,
+	remote: F,
+	root: std::sync::Arc<::root::Root>,
+	root_xml: bytes::Bytes,
+	
+	cpupool: std::sync::Arc<futures_cpupool::CpuPool>,
+}
+
+impl<F> ServerFactory<F> {
+	pub fn new(args: ServerArgs<F>) -> Self {
+		ServerFactory {
+			uri: args.uri,
+			remote: args.remote,
+			root: args.root,
+			root_xml: format!(include_str!("root.xml"), uuid=args.uuid).into(),
+			
+			cpupool: std::sync::Arc::new(futures_cpupool::CpuPool::new(2)),
+		}
+	}
+}
+
+impl<F: Fn() -> tokio_core::reactor::Remote> hyper::server::NewService for ServerFactory<F> {
+	type Request = hyper::Request;
+	type Response = hyper::Response;
+	type Error = hyper::Error;
+	type Instance = ServerRef;
+	
+	fn new_service(&self) -> Result<Self::Instance, std::io::Error> {
+		Ok(ServerRef(std::sync::Arc::new(Server::new(self))))
+	}
+}
+
+#[derive(Debug)]
+pub struct Server {
+	uri: String,
+	handle: tokio_core::reactor::Handle,
+	root: std::sync::Arc<::root::Root>,
+	cpupool: std::sync::Arc<futures_cpupool::CpuPool>,
+	root_xml: bytes::Bytes,
 }
 
 impl Server {
+	fn new<
+		F: Fn() -> tokio_core::reactor::Remote>
+		(factory: &ServerFactory<F>) -> Self
+	{
+		Server {
+			uri: factory.uri.clone(),
+			handle: (factory.remote)().handle().unwrap(),
+			root: factory.root.clone(),
+			cpupool: factory.cpupool.clone(),
+			root_xml: factory.root_xml.clone(),
+		}
+	}
+}
+
+impl ServerRef {
 	fn call_root(&self, mut req: dlna::Request) -> BoxedResponse {
 		match req.pop() {
 			"root.xml" => {
@@ -35,7 +93,7 @@ impl Server {
 				respond_ok(
 					hyper::Response::new()
 						.with_status(hyper::StatusCode::Ok)
-						.with_body(ROOT_XML))
+						.with_body(self.0.root_xml.clone()))
 			}
 			"connection" => self.call_connection(req),
 			"content" => self.call_content(req),
@@ -75,8 +133,8 @@ impl Server {
 		
 		match &action[..] {
 			"Browse" => {
-				let root = self.root.clone();
-				Box::new(req.to_xml().and_then(move |x| call_dlna_browse(root, x.body)))
+				let this = self.clone();
+				Box::new(req.to_xml().and_then(move |x| this.call_dlna_browse(x.body)))
 			}
 			other => respond_soap_fault(&format!("Unknown action {:?}", other)),
 		}
@@ -84,13 +142,13 @@ impl Server {
 	
 	fn call_video(&self, req: dlna::Request) -> ::Result<hyper::Response> {
 		let path = req.decoded_path()?;
-		let entry = self.root.lookup(&path)?;
-		let content = entry.body(self.handle.clone())?
+		let entry = self.0.root.lookup(&path)?;
+		let content = entry.body(self.0.handle.clone())?
 			.map(|c| Ok(c.into()))
 			.map_err(|e| e.into());
 		
 		let (sender, body) = hyper::Body::pair();
-		self.cpupool.execute(
+		self.0.cpupool.execute(
 			sender.send_all(content)
 				.map(|_| ())
 				.map_err(|e| { println!("Error sending video: {:?}", e); }))
@@ -100,6 +158,54 @@ impl Server {
 		// response.headers_mut().set(hyper::header::ContentLength(1000000000));
 		response.set_body(body);
 		Ok(response)
+	}
+		
+	fn call_dlna_browse(self, body: dlna::types::Body) -> ::Result<hyper::Response> {
+		let object = self.0.root.lookup(&body.browse.object_id)?;
+		
+		let mut containers = Vec::new();
+		let mut items = Vec::new();
+		for entry in object.children()?.iter() {
+			match entry.is_dir() {
+				true => containers.push(dlna::types::Container {
+					parent_id: entry.parent_id().to_string(),
+					id: entry.id().to_string(),
+					title: entry.title(),
+					restricted: true,
+					child_count: 0,
+					class: entry.dlna_class(),
+					_start_body: ::xml::Body(()),
+				}),
+				false => items.push(dlna::types::Item {
+					parent_id: entry.parent_id().to_string(),
+					id: entry.id().to_string(),
+					title: entry.title(),
+					restricted: true,
+					class: entry.dlna_class(),
+					res: vec![
+						dlna::types::Res {
+							protocol_info: "http-get:*:video/x-matroska:*".to_string(),
+							uri: ::xml::Body(format!("{}/video/{}", self.0.uri, entry.id())),
+						},
+					],
+				}),
+			}
+		}
+		
+		respond_soap(dlna::types::BodyBrowseResponse {
+			browse_response: dlna::types::BrowseResponse {
+				number_returned: 1,
+				total_matches: 1,
+				update_id: 1,
+				result: dlna::types::Result(dlna::types::DidlLite {
+					xmlns: "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
+					xmlns_dc: "http://purl.org/dc/elements/1.1/",
+					xmlns_upnp: "urn:schemas-upnp-org:metadata-1-0/upnp/",
+					containers: containers,
+					items: items,
+				}),
+			},
+		})
 	}
 }
 
@@ -144,61 +250,13 @@ fn call_method_not_allowed(req: dlna::Request) -> BoxedResponse {
 		hyper::Response::new()
 			.with_status(hyper::StatusCode::MethodNotAllowed))
 }
-	
-fn call_dlna_browse(
-	root: std::sync::Arc<::root::Root>, body: dlna::types::Body)
-	-> ::Result<hyper::Response>
-{
-	let object = root.lookup(&body.browse.object_id)?;
-	
-	let mut containers = Vec::new();
-	let mut items = Vec::new();
-	for entry in object.children()?.iter() {
-		match entry.is_dir() {
-			true => containers.push(dlna::types::Container {
-				parent_id: entry.parent_id().to_string(),
-				id: entry.id().to_string(),
-				title: entry.title(),
-				restricted: true,
-				child_count: 0,
-				class: entry.dlna_class(),
-				_start_body: ::xml::Body(()),
-			}),
-			false => items.push(dlna::types::Item {
-				parent_id: entry.parent_id().to_string(),
-				id: entry.id().to_string(),
-				title: entry.title(),
-				restricted: true,
-				class: entry.dlna_class(),
-				res: vec![
-					dlna::types::Res {
-						protocol_info: "http-get:*:video/x-matroska:*".to_string(),
-						uri: ::xml::Body(format!("http://192.168.0.52:8080/video/{}", entry.id())),
-					},
-				],
-			}),
-		}
-	}
-	
-	respond_soap(dlna::types::BodyBrowseResponse {
-		browse_response: dlna::types::BrowseResponse {
-			number_returned: 1,
-			total_matches: 1,
-			update_id: 1,
-			result: dlna::types::Result(dlna::types::DidlLite {
-				xmlns: "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
-				xmlns_dc: "http://purl.org/dc/elements/1.1/",
-				xmlns_upnp: "urn:schemas-upnp-org:metadata-1-0/upnp/",
-				containers: containers,
-				items: items,
-			}),
-		},
-	})
-}
 
 type BoxedResponse = Box<futures::Future<Item = hyper::Response, Error = ::error::Error>>;
 
-impl hyper::server::Service for Server {
+#[derive(Clone,Debug)]
+pub struct ServerRef(std::sync::Arc<Server>);
+
+impl hyper::server::Service for ServerRef {
 	type Request = hyper::Request;
 	type Response = hyper::Response;
 	type Error = hyper::Error;

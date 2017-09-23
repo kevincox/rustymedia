@@ -2,6 +2,7 @@ extern crate docopt;
 extern crate env_logger;
 extern crate futures_cpupool;
 extern crate hyper;
+extern crate pnet;
 extern crate rustymedia;
 #[macro_use] extern crate serde_derive;
 extern crate tokio_core;
@@ -18,9 +19,10 @@ Folder Configuration:
 		The <mapping> argument should be in the form <name>=<path> where
 		everything until the first `=` is treated as the name and the rest as
 		the path.
-		
+	
 Server Options:
-	-b --bind=<addr>  Serving socket bind address [default: [::]:4950].
+	-b --bind=<addr>  Serving socket bind address. [default: [::]:4950]
+	--uuid=<uuid>  Server UUID. [default: 06289e13-a832-4d76-be0b-00151d449864]
 
 Other Options:
 	-h --help  Show this help.
@@ -30,6 +32,21 @@ Other Options:
 struct Args {
 	flag_bind: std::net::SocketAddr,
 	flag_local: Vec<String>,
+	flag_uuid: String,
+}
+
+fn find_public_addr(bind: std::net::SocketAddr) -> std::net::SocketAddr {
+	if !bind.ip().is_unspecified() { return bind }
+	
+	for interface in pnet::datalink::interfaces() {
+		if interface.is_loopback() { continue }
+		
+		for ipnetwork in interface.ips {
+			return std::net::SocketAddr::new(ipnetwork.ip(), bind.port());
+		}
+	}
+	
+	panic!("Could not find public address! Please pass --bind=<ip>:<port>")
 }
 
 fn result_main() -> rustymedia::Result<()> {
@@ -51,17 +68,19 @@ fn result_main() -> rustymedia::Result<()> {
 	}
 	let root = Arc::new(root);
 	
-	let cpupool = Arc::new(futures_cpupool::CpuPool::new(2));
+	let addr = find_public_addr(args.flag_bind);
 	
 	let handle: Arc<Mutex<Option<tokio_core::reactor::Remote>>> =
 		Arc::new(std::sync::Mutex::new(None));
 	
 	let service_handle = handle.clone();
-	let service = move || Ok(rustymedia::dlna::server::Server {
-		root: root.clone(),
-		handle: service_handle.lock().unwrap().as_ref().unwrap().handle().unwrap(),
-		cpupool: cpupool.clone(),
-	});
+	let service = rustymedia::dlna::server::ServerFactory::new(
+		rustymedia::dlna::server::ServerArgs {
+			uri: format!("http://{}", addr),
+			root: root.clone(),
+			remote: move || service_handle.lock().unwrap().as_ref().unwrap().clone(),
+			uuid: args.flag_uuid,
+		});
 	
 	let server = hyper::server::Http::new()
 		.bind(&args.flag_bind, service).unwrap();

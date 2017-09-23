@@ -1,6 +1,7 @@
 use std;
 use std::sync::Arc;
 
+#[derive(Debug)]
 pub struct Root {
 	items: std::collections::HashMap<String,Box<::Object>>
 }

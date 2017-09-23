@@ -5,11 +5,13 @@ use tokio_core;
 
 use error::{ResultExt};
 
+#[derive(Debug)]
 pub struct Root {
 	title: String,
 	path: std::path::PathBuf,
 }
 
+#[derive(Debug)]
 pub struct Object {
 	root: Arc<Root>,
 	path: std::path::PathBuf,
@@ -38,11 +40,15 @@ impl Object {
 	{
 		let path = path.into();
 		let root = Arc::new(Root {
-			title: name,
+			title: name.clone(),
 			path: path.clone(),
 		});
 		
-		Self::new(root, path)
+		Ok(Object {
+			root: root,
+			path: path,
+			id: name,
+		})
 	}
 }
 

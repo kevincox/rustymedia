@@ -4,7 +4,6 @@ extern crate futures_cpupool;
 #[macro_use] extern crate error_chain;
 #[macro_use] extern crate hyper;
 extern crate percent_encoding;
-extern crate pnet;
 #[macro_use] extern crate serde_derive;
 extern crate serde;
 extern crate serde_xml_rs;
@@ -45,7 +44,7 @@ impl<T: std::io::Read> futures::Stream for ReadStream<T> {
 	}
 }
 
-pub trait Object: Send + Sync {
+pub trait Object: Send + Sync + std::fmt::Debug {
 	fn id(&self) -> &str;
 	fn parent_id(&self) -> &str;
 	fn dlna_class(&self) -> &'static str;

@@ -1,5 +1,4 @@
 use futures::{Future, IntoFuture, Stream};
-use pnet;
 use std;
 use tokio_core;
 
@@ -14,26 +13,6 @@ pub fn schedule_presence_broadcasts(
 	socket.connect("239.255.255.250:1900").unwrap();
 	let socket = std::rc::Rc::new(socket);
 	
-	if addr.ip().is_unspecified() {
-		for interface in pnet::datalink::interfaces() {
-			if interface.is_loopback() { continue }
-			
-			for ipnetwork in interface.ips {
-				schedule_presence_broadcasts_for_address(
-					handle.clone(), socket.clone(),
-					std::net::SocketAddr::new(ipnetwork.ip(), addr.port()));
-			}
-		}
-	} else {
-		schedule_presence_broadcasts_for_address(handle, socket, addr)
-	}
-}
-
-fn schedule_presence_broadcasts_for_address(
-	handle: tokio_core::reactor::Handle,
-	socket: std::rc::Rc<std::net::UdpSocket>,
-	addr: std::net::SocketAddr)
-{
 	let make_msg = |nt, usn: &str| format!("\
 		NOTIFY * HTTP/1.1\r\n\
 		HOST: 239.255.255.250:1900\r\n\
