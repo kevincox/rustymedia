@@ -6,11 +6,14 @@ in rec {
 			description = "RustyMedia Server";
 			homepage = https://kevincox.ca;
 		};
+		
 		depsSha256 = "";
 		src = builtins.filterSource (name: type:
 			(lib.hasPrefix (toString ./src) name) ||
 			(lib.hasPrefix (toString ./Cargo) name)) ./.;
 		
 		FFMPEG_BINARY = "${ffmpeg}/bin/ffmpeg";
+		
+		doCheck = false;
 	};
 }

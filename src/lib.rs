@@ -24,6 +24,14 @@ pub type ByteStream = Box<futures::Stream<Item=Vec<u8>, Error=Error> + Send>;
 
 struct ReadStream<T>(T);
 
+#[derive(PartialEq)]
+pub enum Type {
+	Directory,
+	Video,
+	Image,
+	Other,
+}
+
 impl<T: std::io::Read> futures::Stream for ReadStream<T> {
 	type Item = Vec<u8>;
 	type Error = Error;
@@ -47,15 +55,88 @@ impl<T: std::io::Read> futures::Stream for ReadStream<T> {
 pub trait Object: Send + Sync + std::fmt::Debug {
 	fn id(&self) -> &str;
 	fn parent_id(&self) -> &str;
-	fn dlna_class(&self) -> &'static str;
+	fn file_type(&self) -> Type;
+	
+	fn dlna_class(&self) -> &'static str {
+		match self.file_type() {
+			Type::Directory => "object.container.storageFolder",
+			Type::Video => "object.item.videoItem",
+			Type::Image => "object.item.imageItem.photo",
+			Type::Other => "object.item",
+		}
+	}
 	
 	fn title(&self) -> String;
 	
 	fn is_dir(&self) -> bool;
 	fn lookup(&self, id: &str) -> Result<Box<Object>>;
+	
 	fn children(&self) -> Result<Vec<Box<Object>>>;
+	
+	fn video_children(&self) -> Result<Vec<Box<Object>>> {
+		let mut children = self.children()?;
+		children.retain(|c|
+			c.file_type() == Type::Directory ||
+			c.file_type() == Type::Video);
+		children.sort_by(|l, r| human_order(l.id(), r.id()));
+		Ok(children)
+	}
 	
 	fn body(&self, _handle: tokio_core::reactor::Handle) -> Result<ByteStream> {
 		Err(ErrorKind::NotAFile(self.id().to_string()).into())
 	}
+}
+
+#[derive(Debug,Eq,PartialEq,PartialOrd)]
+struct Chunk<'a>(&'a str);
+
+impl<'a> Ord for Chunk<'a> {
+	fn cmp(&self, that: &Self) -> std::cmp::Ordering {
+		if self.0.chars().next().unwrap_or('0').is_digit(10) {
+			(self.0.len(), self.0).cmp(&(that.0.len(), that.0))
+		} else {
+			self.0.cmp(that.0)
+		}
+	}
+}
+
+#[derive(Debug)]
+struct ChunkIter<'a>(&'a str);
+
+impl<'a> Iterator for ChunkIter<'a> {
+	type Item = Chunk<'a>;
+	
+	fn next(&mut self) -> Option<Self::Item> {
+		if let Some(first) = self.0.chars().next() {
+			if let Some(i) = self.0.find(|c: char| c.is_digit(10) != first.is_digit(10)) {
+				let r = &self.0[..i];
+				self.0 = &self.0[i..];
+				Some(Chunk(r))
+			} else {
+				let r = self.0;
+				self.0 = "";
+				Some(Chunk(r))
+			}
+		} else {
+			None
+		}
+	}
+}
+
+fn human_order(l: &str, r: &str) -> std::cmp::Ordering {
+	let lchunks = ChunkIter(l.rsplit('/').next().unwrap_or(r));
+	let rchunks = ChunkIter(r.rsplit('/').next().unwrap_or(r));
+	lchunks.cmp(rchunks)
+}
+
+#[test]
+fn test_human_order() {
+	use std::cmp::Ordering::*;
+	
+	assert_eq!(human_order("foo", "bar"), Greater);
+	assert_eq!(human_order("bar", "foo"), Less);
+	assert_eq!(human_order("bar", "bar"), Equal);
+	assert_eq!(human_order("bar", "bar 10"), Less);
+	assert_eq!(human_order("bar 2", "bar 10"), Less);
+	assert_eq!(human_order("bar 20 59", "bar 20 8"), Greater);
 }

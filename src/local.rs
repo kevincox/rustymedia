@@ -64,15 +64,12 @@ impl ::Object for Object {
 		}
 	}
 	
-	fn dlna_class(&self) -> &'static str {
-		if self.is_dir() { return "object.container.storageFolder" }
+	fn file_type(&self) -> ::Type {
+		if self.is_dir() { return ::Type::Directory }
 		
 		match self.path.extension().and_then(std::ffi::OsStr::to_str) {
-			Some("mkv") => "object.item.videoItem",
-			_ => {
-				println!("Don't know class for {:?}", self.path);
-				"object.item.textItem"
-			}
+			Some("mkv") => ::Type::Video,
+			_ => ::Type::Other,
 		}
 	}
 	
@@ -109,6 +106,8 @@ impl ::Object for Object {
 				}))
 			.collect()
 	}
+	
+	// ffprobe -of json file -show_streams
 	
 	fn body(&self, _handle: tokio_core::reactor::Handle) -> ::Result<::ByteStream> {
 		let cmd = std::process::Command::new(::config::FFMPEG_BINARY())

@@ -44,6 +44,7 @@ pub fn schedule_presence_broadcasts(
 	
 	let broadcast_presence = move || -> ::error::Result<()> {
 		// println!("Broadcasting presence.");
+		// println!("{}", String::from_utf8_lossy(&msg_uuid));
 		
 		// Spec recommends sending each packet 3 times. One seems fine for now.
 		for _ in 0..1 {

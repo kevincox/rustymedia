@@ -32,8 +32,7 @@ impl Root {
 impl ::Object for Arc<Root> {
 	fn id(&self) -> &str { "0" }
 	fn parent_id(&self) -> &str { "-1" }
-	
-	fn dlna_class(&self) -> &'static str { "object.container.storageFolder" }
+	fn file_type(&self) -> ::Type { ::Type::Directory }
 	
 	fn title(&self) -> String {
 		"Rusty Media".to_string()

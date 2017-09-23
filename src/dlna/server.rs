@@ -165,7 +165,7 @@ impl ServerRef {
 		
 		let mut containers = Vec::new();
 		let mut items = Vec::new();
-		for entry in object.children()?.iter() {
+		for entry in object.video_children()?.iter() {
 			match entry.is_dir() {
 				true => containers.push(dlna::types::Container {
 					parent_id: entry.parent_id().to_string(),
