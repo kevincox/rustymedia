@@ -1,7 +1,6 @@
 use std;
 use std::sync::Arc;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
-use tokio_core;
 
 use error::{ResultExt};
 
@@ -107,26 +106,14 @@ impl ::Object for Object {
 			.collect()
 	}
 	
-	// ffprobe -of json file -show_streams
+	fn ffmpeg_input(&self, _exec: &::Executors) -> ::Result<::ffmpeg::Input> {
+		Ok(::ffmpeg::Input::Uri(&self.path))
+	}
 	
-	fn body(&self, _handle: tokio_core::reactor::Handle) -> ::Result<::ByteStream> {
-		let cmd = std::process::Command::new(::config::FFMPEG_BINARY())
-			.stdin(std::process::Stdio::null())
-			.stdout(std::process::Stdio::piped())
-			.arg("-nostdin")
-			.arg("-i").arg(self.path.clone())
-			.arg("-c:v").arg("copy")
-			.arg("-c:a").arg("aac")
-			.arg("-f").arg("matroska")
-			.arg("pipe:")
-			.spawn()
-			.chain_err(|| "Error executing ffmpeg")?;
-		
-		// let file = std::fs::File::open(&self.path)
-		// 	.chain_err(|| format!("Error opening {:?}", self.path))?;
-		// let metadata = file.metadata()
-		// 	.chain_err(|| format!("Error getting metadata for {:?}", self.path))?;
-		Ok(Box::new(::ReadStream(cmd.stdout.unwrap())))
+	fn body(&self, _exec: &::Executors) -> ::Result<::ByteStream> {
+		let file = std::fs::File::open(&self.path)
+			.chain_err(|| format!("Error opening {:?}", self.path))?;
+		Ok(Box::new(::ReadStream(file)))
 	}
 }
 

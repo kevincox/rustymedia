@@ -3,26 +3,50 @@ extern crate futures;
 extern crate futures_cpupool;
 #[macro_use] extern crate error_chain;
 #[macro_use] extern crate hyper;
+extern crate os_pipe;
 extern crate percent_encoding;
 #[macro_use] extern crate serde_derive;
 extern crate serde;
+extern crate serde_json;
 extern crate serde_xml_rs;
 extern crate tokio_core;
 extern crate tokio_file_unix;
 extern crate tokio_io;
 
+use error_chain::ChainedError;
+use futures::future::{Executor, Future as _Future};
+
 mod config;
 pub mod dlna;
 mod error;
+mod ffmpeg;
 pub mod local;
 pub mod root;
 mod xml;
 
 pub use error::{Error,ErrorKind,Result};
 
+pub type Future<T> = Box<futures::Future<Item=T, Error=Error> + Send>;
 pub type ByteStream = Box<futures::Stream<Item=Vec<u8>, Error=Error> + Send>;
 
 struct ReadStream<T>(T);
+
+#[derive(Debug)]
+pub struct Executors {
+	handle: tokio_core::reactor::Handle,
+	cpupool: std::sync::Arc<futures_cpupool::CpuPool>,
+}
+
+impl Executors {
+	fn spawn<
+		F: 'static + futures::future::Future<Item=(),Error=Error> + Send>
+		(&self, f: F) -> Result<()>
+	{
+		self.cpupool.execute(
+			f.map_err(|e| { println!("Error in spawned future: {}", e.display_chain()); }))
+				.map_err(|e| e.into())
+	}
+}
 
 #[derive(PartialEq)]
 pub enum Type {
@@ -82,8 +106,20 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 		Ok(children)
 	}
 	
-	fn body(&self, _handle: tokio_core::reactor::Handle) -> Result<ByteStream> {
+	fn ffmpeg_input(&self, exec: &Executors) -> Result<::ffmpeg::Input> {
+		Ok(::ffmpeg::Input::Stream(self.body(exec)?))
+	}
+	
+	fn body(&self, _exec: &Executors) -> Result<ByteStream> {
 		Err(ErrorKind::NotAFile(self.id().to_string()).into())
+	}
+	
+	fn transcoded_body(&self, exec: &Executors) -> Result<ByteStream> {
+		exec.spawn(
+			::ffmpeg::format(::ffmpeg::Input::Stream(self.body(exec)?), exec)
+				.then(|r| Ok(println!("Finished: {:?}", r))))?;
+		
+		::ffmpeg::transcode(self.ffmpeg_input(exec)?, exec)
 	}
 }
 

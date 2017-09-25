@@ -15,6 +15,7 @@ error_chain!{
 	foreign_links {
 		Hyper(::hyper::Error);
 		Io(::std::io::Error);
+		Json(::serde_json::Error);
 		KXml(::xml::Error);
 		Utf8Error(::std::str::Utf8Error);
 		Xml(::serde_xml_rs::Error);
@@ -30,5 +31,11 @@ impl<T> Into<futures::sync::mpsc::SendError<T>> for Error {
 impl<T> From<futures::sync::mpsc::SendError<T>> for Error {
 	fn from(err: futures::sync::mpsc::SendError<T>) -> Self {
 		ErrorKind::Other(format!("SendError: {:?}", err)).into()
+	}
+}
+
+impl<T> From<futures::future::ExecuteError<T>> for Error {
+	fn from(_: futures::future::ExecuteError<T>) -> Self {
+		ErrorKind::ExecuteError.into()
 	}
 }

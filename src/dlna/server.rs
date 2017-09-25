@@ -2,7 +2,6 @@ use bytes;
 use error_chain::ChainedError;
 use futures;
 use futures::{Future, Sink, Stream};
-use futures::future::{Executor};
 use futures_cpupool;
 use hyper;
 use serde;
@@ -42,7 +41,7 @@ impl<F> ServerFactory<F> {
 			root: args.root,
 			root_xml: format!(include_str!("root.xml"), uuid=args.uuid).into(),
 			
-			cpupool: std::sync::Arc::new(futures_cpupool::CpuPool::new(2)),
+			cpupool: std::sync::Arc::new(futures_cpupool::CpuPool::new(8)),
 		}
 	}
 }
@@ -61,10 +60,10 @@ impl<F: Fn() -> tokio_core::reactor::Remote> hyper::server::NewService for Serve
 #[derive(Debug)]
 pub struct Server {
 	uri: String,
-	handle: tokio_core::reactor::Handle,
 	root: std::sync::Arc<::root::Root>,
-	cpupool: std::sync::Arc<futures_cpupool::CpuPool>,
 	root_xml: bytes::Bytes,
+	
+	exec: ::Executors,
 }
 
 impl Server {
@@ -74,10 +73,12 @@ impl Server {
 	{
 		Server {
 			uri: factory.uri.clone(),
-			handle: (factory.remote)().handle().unwrap(),
 			root: factory.root.clone(),
-			cpupool: factory.cpupool.clone(),
 			root_xml: factory.root_xml.clone(),
+			exec: ::Executors {
+				handle: (factory.remote)().handle().unwrap(),
+				cpupool: factory.cpupool.clone(),
+			},
 		}
 	}
 }
@@ -143,16 +144,15 @@ impl ServerRef {
 	fn call_video(&self, req: dlna::Request) -> ::Result<hyper::Response> {
 		let path = req.decoded_path()?;
 		let entry = self.0.root.lookup(&path)?;
-		let content = entry.body(self.0.handle.clone())?
+		let content = entry.transcoded_body(&self.0.exec)?
 			.map(|c| Ok(c.into()))
 			.map_err(|e| e.into());
 		
 		let (sender, body) = hyper::Body::pair();
-		self.0.cpupool.execute(
+		self.0.exec.spawn(
 			sender.send_all(content)
 				.map(|_| ())
-				.map_err(|e| { println!("Error sending video: {:?}", e); }))
-			.map_err::<::Error,_>(|_| ::ErrorKind::ExecuteError.into())?;
+				.then(|r| r.chain_err(|| "Error sending body.")))?;
 		
 		let mut response = hyper::Response::new();
 		// response.headers_mut().set(hyper::header::ContentLength(1000000000));

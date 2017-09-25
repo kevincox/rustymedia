@@ -3,3 +3,6 @@
 #[inline] pub fn FFMPEG_BINARY() -> &'static str {
 	option_env!("FFMPEG_BINARY").unwrap_or("ffmpeg")
 }
+#[inline] pub fn FFPROBE_BINARY() -> &'static str {
+	option_env!("FFPROBE_BINARY").unwrap_or("ffprobe")
+}
