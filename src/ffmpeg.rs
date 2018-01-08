@@ -91,7 +91,7 @@ pub fn format(input: Input, exec: &::Executors) -> ::Future<Format> {
 	cmd.arg("-of").arg("json");
 	cmd.arg("-show_streams");
 	
-	eprintln!("Executing: {:?}", cmd);
+	println!("Executing: {:?}", cmd);
 	
 	let child = match cmd.spawn().chain_err(|| "Error executing ffprobe") {
 		Ok(child) => child,

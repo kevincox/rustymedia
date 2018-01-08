@@ -41,7 +41,7 @@ pub struct ServerFactory<F> {
 
 impl<F> ServerFactory<F> {
 	pub fn new(args: ServerArgs<F>) -> Self {
-		eprintln!("ServerFactory spawning server.");
+		println!("ServerFactory spawning server.");
 		ServerFactory {
 			uri: args.uri,
 			remote: args.remote,
@@ -82,7 +82,7 @@ impl Server {
 		F: Fn() -> tokio_core::reactor::Remote>
 		(factory: &ServerFactory<F>) -> Self
 	{
-		eprintln!("dlna::server::Server::new()");
+		println!("dlna::server::Server::new()");
 		Server {
 			uri: factory.uri.clone(),
 			root: factory.root.clone(),
@@ -168,14 +168,14 @@ impl ServerRef {
 		
 		let content = {
 			let mut cache = self.0.shared.transcode_cache.lock().unwrap();
-			eprintln!("Cache: {:?}", *cache);
+			println!("Cache: {:?}", *cache);
 			match cache.entry(path.clone()) {
 				std::collections::hash_map::Entry::Occupied(e) => {
-					eprintln!("Transcode cache hit!");
+					println!("Transcode cache hit!");
 					e.get().read_range(start, 0)
 				},
 				std::collections::hash_map::Entry::Vacant(e) => {
-					eprintln!("Transcode cache miss!");
+					println!("Transcode cache miss!");
 					let item = self.0.root.lookup(&path)?;
 					let media = item.transcoded_body(&self.0.exec)?;
 					let content = media.read_range(start, 0);
@@ -203,13 +203,13 @@ impl ServerRef {
 			response.set_status(hyper::StatusCode::PartialContent);
 			response.headers_mut().set(hyper::header::ContentRange(
 				hyper::header::ContentRangeSpec::Bytes{
-					range: Some((start, i32::max_value() as u64)),
-					instance_length: Some(i32::max_value() as u64),
+					range: Some((start, i64::max_value() as u64)),
+					instance_length: Some(i64::max_value() as u64),
 				})
 			);
 		}
 		// response.headers_mut().set(hyper::header::ContentLength(1000000000));
-		eprintln!("Response: {:?}", response);
+		println!("Response: {:?}", response);
 		response.set_body(body);
 		Ok(response)
 	}
