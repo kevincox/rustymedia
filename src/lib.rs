@@ -1,8 +1,11 @@
+#![recursion_limit="512"] 
+
 extern crate bytes;
 extern crate futures;
 extern crate futures_cpupool;
 #[macro_use] extern crate error_chain;
 #[macro_use] extern crate hyper;
+extern crate nix;
 extern crate os_pipe;
 extern crate percent_encoding;
 #[macro_use] extern crate serde_derive;
@@ -114,13 +117,18 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 		Err(ErrorKind::NotAFile(self.id().to_string()).into())
 	}
 	
-	fn transcoded_body(&self, exec: &Executors) -> Result<ByteStream> {
-		exec.spawn(
-			::ffmpeg::format(::ffmpeg::Input::Stream(self.body(exec)?), exec)
-				.then(|r| Ok(println!("Finished: {:?}", r))))?;
+	fn transcoded_body(&self, exec: &Executors) -> ::Result<Box<Media>> {
+		// exec.spawn(
+		// 	::ffmpeg::format(::ffmpeg::Input::Stream(self.body(exec).unwrap()), exec)
+		// 		.then(|r| Ok(println!("Finished: {:?}", r)))).unwrap();
 		
-		::ffmpeg::transcode(self.ffmpeg_input(exec)?, exec)
+		::ffmpeg::transcode(self.ffmpeg_input(exec).unwrap(), exec)
 	}
+}
+
+pub trait Media: Send + Sync + std::fmt::Debug {
+	fn read_all(&self) -> ByteStream;
+	fn read_range(&self, start: u64, end: u64) -> ByteStream;
 }
 
 #[derive(Debug,Eq,PartialEq,PartialOrd)]

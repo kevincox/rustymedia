@@ -24,10 +24,16 @@ pub struct ServerArgs<F> {
 	pub uuid: String,
 }
 
+#[derive(Debug)]
+struct Shared {
+	transcode_cache: std::sync::Mutex<std::collections::HashMap<String,Box<::Media>>>,
+}
+
 pub struct ServerFactory<F> {
 	uri: String,
 	remote: F,
 	root: std::sync::Arc<::root::Root>,
+	shared: std::sync::Arc<Shared>,
 	root_xml: bytes::Bytes,
 	
 	cpupool: std::sync::Arc<futures_cpupool::CpuPool>,
@@ -35,10 +41,14 @@ pub struct ServerFactory<F> {
 
 impl<F> ServerFactory<F> {
 	pub fn new(args: ServerArgs<F>) -> Self {
+		eprintln!("ServerFactory spawning server.");
 		ServerFactory {
 			uri: args.uri,
 			remote: args.remote,
 			root: args.root,
+			shared: std::sync::Arc::new(Shared {
+				transcode_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
+			}),
 			root_xml: format!(include_str!("root.xml"), uuid=args.uuid).into(),
 			
 			cpupool: std::sync::Arc::new(futures_cpupool::CpuPool::new(8)),
@@ -61,6 +71,7 @@ impl<F: Fn() -> tokio_core::reactor::Remote> hyper::server::NewService for Serve
 pub struct Server {
 	uri: String,
 	root: std::sync::Arc<::root::Root>,
+	shared: std::sync::Arc<Shared>,
 	root_xml: bytes::Bytes,
 	
 	exec: ::Executors,
@@ -71,9 +82,11 @@ impl Server {
 		F: Fn() -> tokio_core::reactor::Remote>
 		(factory: &ServerFactory<F>) -> Self
 	{
+		eprintln!("dlna::server::Server::new()");
 		Server {
 			uri: factory.uri.clone(),
 			root: factory.root.clone(),
+			shared: factory.shared.clone(),
 			root_xml: factory.root_xml.clone(),
 			exec: ::Executors {
 				handle: (factory.remote)().handle().unwrap(),
@@ -143,8 +156,36 @@ impl ServerRef {
 	
 	fn call_video(&self, req: dlna::Request) -> ::Result<hyper::Response> {
 		let path = req.decoded_path()?;
-		let entry = self.0.root.lookup(&path)?;
-		let content = entry.transcoded_body(&self.0.exec)?
+		
+		let start = match req.req.headers().get() {
+			Some(&hyper::header::Range::Bytes(ref spec)) => match spec.first() {
+				Some(&hyper::header::ByteRangeSpec::FromTo(from, _)) => from,
+				Some(&hyper::header::ByteRangeSpec::AllFrom(from)) => from,
+				_ => 0,
+			}
+			_ => 0,
+		};
+		
+		let content = {
+			let mut cache = self.0.shared.transcode_cache.lock().unwrap();
+			eprintln!("Cache: {:?}", *cache);
+			match cache.entry(path.clone()) {
+				std::collections::hash_map::Entry::Occupied(e) => {
+					eprintln!("Transcode cache hit!");
+					e.get().read_range(start, 0)
+				},
+				std::collections::hash_map::Entry::Vacant(e) => {
+					eprintln!("Transcode cache miss!");
+					let item = self.0.root.lookup(&path)?;
+					let media = item.transcoded_body(&self.0.exec)?;
+					let content = media.read_range(start, 0);
+					e.insert(media);
+					content
+				}
+			}
+		};
+		
+		let content = content
 			.map(|c| Ok(c.into()))
 			.map_err(|e| e.into());
 		
@@ -155,7 +196,20 @@ impl ServerRef {
 				.then(|r| r.chain_err(|| "Error sending body.")))?;
 		
 		let mut response = hyper::Response::new();
+		response.headers_mut().set(hyper::header::AcceptRanges(vec![
+			hyper::header::RangeUnit::Bytes,
+		]));
+		if start != 0 {
+			response.set_status(hyper::StatusCode::PartialContent);
+			response.headers_mut().set(hyper::header::ContentRange(
+				hyper::header::ContentRangeSpec::Bytes{
+					range: Some((start, i32::max_value() as u64)),
+					instance_length: Some(i32::max_value() as u64),
+				})
+			);
+		}
 		// response.headers_mut().set(hyper::header::ContentLength(1000000000));
+		eprintln!("Response: {:?}", response);
 		response.set_body(body);
 		Ok(response)
 	}

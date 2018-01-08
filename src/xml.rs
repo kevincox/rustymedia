@@ -59,51 +59,51 @@ impl<'a, W: Write> serde::ser::Serializer for &'a mut Serializer<W> {
 	type SerializeStruct = Struct<'a, W>;
 	type SerializeStructVariant = serde::ser::Impossible<Self::Ok, Self::Error>;
 	
-	fn serialize_bool(mut self, v: bool) -> Result<Self::Ok> {
+	fn serialize_bool(self, v: bool) -> Result<Self::Ok> {
 		write!(self.writer, "{}", v)?; Ok(())
 	}
 	
-	fn serialize_i8(mut self, v: i8) -> Result<Self::Ok> {
+	fn serialize_i8(self, v: i8) -> Result<Self::Ok> {
 		write!(self.writer, "{}", v)?; Ok(())
 	}
 	
-	fn serialize_i16(mut self, v: i16) -> Result<Self::Ok> {
+	fn serialize_i16(self, v: i16) -> Result<Self::Ok> {
 		write!(self.writer, "{}", v)?; Ok(())
 	}
 	
-	fn serialize_i32(mut self, v: i32) -> Result<Self::Ok> {
+	fn serialize_i32(self, v: i32) -> Result<Self::Ok> {
 		write!(self.writer, "{}", v)?; Ok(())
 	}
 	
-	fn serialize_i64(mut self, v: i64) -> Result<Self::Ok> {
+	fn serialize_i64(self, v: i64) -> Result<Self::Ok> {
 		write!(self.writer, "{}", v)?; Ok(())
 	}
 	
-	fn serialize_u8(mut self, v: u8) -> Result<Self::Ok> {
+	fn serialize_u8(self, v: u8) -> Result<Self::Ok> {
 		write!(self.writer, "{}", v)?; Ok(())
 	}
 	
-	fn serialize_u16(mut self, v: u16) -> Result<Self::Ok> {
+	fn serialize_u16(self, v: u16) -> Result<Self::Ok> {
 		write!(self.writer, "{}", v)?; Ok(())
 	}
 	
-	fn serialize_u32(mut self, v: u32) -> Result<Self::Ok> {
+	fn serialize_u32(self, v: u32) -> Result<Self::Ok> {
 		write!(self.writer, "{}", v)?; Ok(())
 	}
 	
-	fn serialize_u64(mut self, v: u64) -> Result<Self::Ok> {
+	fn serialize_u64(self, v: u64) -> Result<Self::Ok> {
 		write!(self.writer, "{}", v)?; Ok(())
 	}
 	
-	fn serialize_f32(mut self, v: f32) -> Result<Self::Ok> {
+	fn serialize_f32(self, v: f32) -> Result<Self::Ok> {
 		write!(self.writer, "{}", v)?; Ok(())
 	}
 	
-	fn serialize_f64(mut self, v: f64) -> Result<Self::Ok> {
+	fn serialize_f64(self, v: f64) -> Result<Self::Ok> {
 		write!(self.writer, "{}", v)?; Ok(())
 	}
 	
-	fn serialize_char(mut self, c: char) -> Result<Self::Ok> {
+	fn serialize_char(self, c: char) -> Result<Self::Ok> {
 		match c {
 			'"' => write!(self.writer, "&quot;")?,
 			'<' => write!(self.writer, "&lt;")?,
@@ -113,7 +113,7 @@ impl<'a, W: Write> serde::ser::Serializer for &'a mut Serializer<W> {
 		Ok(())
 	}
 	
-	fn serialize_str(mut self, value: &str) -> Result<Self::Ok> {
+	fn serialize_str(self, value: &str) -> Result<Self::Ok> {
 		for c in value.chars() {
 			self.serialize_char(c)?
 		}
@@ -136,7 +136,7 @@ impl<'a, W: Write> serde::ser::Serializer for &'a mut Serializer<W> {
 		Ok(())
 	}
 	
-	fn serialize_unit_struct(mut self, name: &'static str) -> Result<Self::Ok> {
+	fn serialize_unit_struct(self, name: &'static str) -> Result<Self::Ok> {
 		check_valid_name(name)?;
 		write!(self.writer, "<{}/>", name)?;
 		Ok(())
@@ -158,7 +158,7 @@ impl<'a, W: Write> serde::ser::Serializer for &'a mut Serializer<W> {
 	}
 	
 	fn serialize_newtype_variant<T: ?Sized + serde::Serialize>
-		(mut self, name: &'static str, _variant_index: u32, variant: &'static str, value: &T)
+		(self, name: &'static str, _variant_index: u32, variant: &'static str, value: &T)
 		-> Result<Self::Ok>
 	{
 		check_valid_name(name)?;
@@ -193,7 +193,7 @@ impl<'a, W: Write> serde::ser::Serializer for &'a mut Serializer<W> {
 		Err(ErrorKind::Unsupported("serialize_map").into())
 	}
 	
-	fn serialize_struct(mut self, name: &'static str, _len: usize)
+	fn serialize_struct(self, name: &'static str, _len: usize)
 		-> Result<Self::SerializeStruct>
 	{
 		check_valid_name(name)?;
@@ -440,7 +440,7 @@ impl<'a, W: Write> serde::ser::SerializeStruct for Struct<'a, W> {
 		Ok(())
 	}
 	
-	fn end(mut self) -> Result<Self::Ok> {
+	fn end(self) -> Result<Self::Ok> {
 		if self.body {
 			write!(self.parent.writer, "</{}>", self.name)?;
 		} else {
@@ -588,7 +588,7 @@ impl<'a, 'b, W: Write> serde::ser::Serializer for SubSerializer<'a, 'b, W> {
 		self.attr(|p| p.serialize_newtype_variant(name, variant_index, variant, value))
 	}
 	
-	fn serialize_seq(mut self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
+	fn serialize_seq(self, _len: Option<usize>) -> Result<Self::SerializeSeq> {
 		self.parent.enter_body()?;
 		Ok(Seq{
 			name: self.name,
@@ -624,7 +624,7 @@ impl<'a, 'b, W: Write> serde::ser::Serializer for SubSerializer<'a, 'b, W> {
 		self.parent.parent.serialize_map(len)
 	}
 	
-	fn serialize_struct(mut self, name: &'static str, len: usize)
+	fn serialize_struct(self, name: &'static str, len: usize)
 		-> Result<Self::SerializeStruct>
 	{
 		self.parent.enter_body()?;
