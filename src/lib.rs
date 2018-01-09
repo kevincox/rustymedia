@@ -117,7 +117,7 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 		Err(ErrorKind::NotAFile(self.id().to_string()).into())
 	}
 	
-	fn transcoded_body(&self, exec: &Executors) -> ::Result<Box<Media>> {
+	fn transcoded_body(&self, exec: &Executors) -> ::Result<std::sync::Arc<Media>> {
 		// exec.spawn(
 		// 	::ffmpeg::format(::ffmpeg::Input::Stream(self.body(exec).unwrap()), exec)
 		// 		.then(|r| Ok(println!("Finished: {:?}", r)))).unwrap();
@@ -126,7 +126,14 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 	}
 }
 
+pub struct MediaSize {
+	available: u64,
+	total: Option<u64>,
+}
+
 pub trait Media: Send + Sync + std::fmt::Debug {
+	fn size(&self) -> MediaSize;
+	
 	fn read_all(&self) -> ByteStream;
 	fn read_range(&self, start: u64, end: u64) -> ByteStream;
 }

@@ -138,29 +138,39 @@ struct MediaFile {
 
 #[derive(Debug)]
 struct MediaProgress {
-	size: i64,
+	size: u64,
 	complete: bool,
 	blocked: Vec<futures::task::Task>,
 }
 
 impl ::Media for Media {
-	fn read_all(&self) -> ::ByteStream {
-		Box::new(MediaStream{file: self.file.clone(), offset: 0})
+	fn size(&self) -> ::MediaSize {
+		let progress = self.file.progress.lock().unwrap();
+		::MediaSize {
+			available: progress.size,
+			total: if progress.complete { Some(progress.size) } else { None },
+		}
 	}
 	
-	fn read_range(&self, start: u64, _end: u64) -> ::ByteStream {
-		Box::new(MediaStream{file: self.file.clone(), offset: start as i64})
+	fn read_all(&self) -> ::ByteStream {
+		Box::new(MediaStream{file: self.file.clone(), offset: 0, end: 0})
+	}
+	
+	fn read_range(&self, start: u64, end: u64) -> ::ByteStream {
+		Box::new(MediaStream{file: self.file.clone(), offset: start as u64, end: end as u64})
 	}
 }
 
 struct MediaStream {
 	file: std::sync::Arc<MediaFile>,
-	offset: i64,
+	offset: u64,
+	end: u64,
 }
 
 impl MediaStream {
 	fn read(&mut self, buf: &mut Vec<u8>) -> nix::Result<i64> {
-		let len = nix::sys::uio::pread(self.file.fd, buf, self.offset)?;
+		let len = nix::sys::uio::pread(self.file.fd, buf, self.offset as i64)?;
+		// println!("STREAM read {}-{} size {}", self.offset, self.offset+len as u64, len);
 		unsafe { buf.set_len(len); }
 		return Ok(len as i64)
 	}
@@ -171,10 +181,12 @@ impl futures::Stream for MediaStream {
 	type Error = ::Error;
 	
 	fn poll(&mut self) -> futures::Poll<Option<Self::Item>, ::Error> {
-		let buf_size = 1024 * 1024;
+		let mut buf_size = 16 * 1024 * 1024;
+		if self.end > 0 { buf_size = buf_size.min((self.end - self.offset) as usize) }
+		if buf_size == 0 { return Ok(futures::Async::Ready(None)) }
+		
 		let mut buf = Vec::with_capacity(buf_size);
 		unsafe { buf.set_len(buf_size); }
-		// println!("READ: {}/{} ({})", len, buf_size, len as f64 / buf_size as f64);
 		
 		match self.read(&mut buf) {
 			Ok(0) => {
@@ -184,7 +196,7 @@ impl futures::Stream for MediaStream {
 						progress.blocked.push(futures::task::current());
 						return Ok(futures::Async::NotReady)
 					}
-					progress.size
+					progress.size.min(self.end)
 				};
 				
 				if size > self.offset {
@@ -200,7 +212,8 @@ impl futures::Stream for MediaStream {
 				Ok(futures::Async::Ready(None))
 			},
 			Ok(len) => {
-				self.offset += len;
+				// println!("READ: {}/{} ({})", len, buf_size, len as f64 / buf_size as f64);
+				self.offset += len as u64;
 				Ok(futures::Async::Ready(Some(buf)))
 			}
 			Err(e) => {
@@ -210,7 +223,7 @@ impl futures::Stream for MediaStream {
 	}
 }
 
-pub fn transcode(input: Input, exec: &::Executors) -> ::Result<Box<::Media>> {
+pub fn transcode(input: Input, exec: &::Executors) -> ::Result<std::sync::Arc<::Media>> {
 	let mut cmd = start_ffmpeg();
 	cmd.stderr(std::process::Stdio::null());
 	add_input(input, exec, &mut cmd)?;
@@ -223,7 +236,7 @@ pub fn transcode(input: Input, exec: &::Executors) -> ::Result<Box<::Media>> {
 	cmd.arg("pipe:");
 	cmd.stdout(std::process::Stdio::piped());
 	
-	eprintln!("Executing: {:?}", cmd);
+	println!("Executing: {:?}", cmd);
 	
 	let child = cmd.spawn().chain_err(|| "Error executing ffmpeg")?;
 	
@@ -256,12 +269,13 @@ pub fn transcode(input: Input, exec: &::Executors) -> ::Result<Box<::Media>> {
 			}
 			
 			let mut progress = media_file_thread.progress.lock().unwrap();
-			progress.size += size as i64;
+			progress.size += size as u64;
 			for task in progress.blocked.drain(..) {
 				task.notify();
 			}
 		}
 		
+		println!("Transcoding complete.");
 		let mut progress = media_file_thread.progress.lock().unwrap();
 		progress.complete = true;
 		for task in progress.blocked.drain(..) {
@@ -269,5 +283,5 @@ pub fn transcode(input: Input, exec: &::Executors) -> ::Result<Box<::Media>> {
 		}
 	});
 	
-	Ok(Box::new(Media{file: media_file}))
+	Ok(std::sync::Arc::new(Media{file: media_file}))
 }

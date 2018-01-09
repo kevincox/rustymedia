@@ -26,7 +26,7 @@ pub struct ServerArgs<F> {
 
 #[derive(Debug)]
 struct Shared {
-	transcode_cache: std::sync::Mutex<std::collections::HashMap<String,Box<::Media>>>,
+	transcode_cache: std::sync::Mutex<std::collections::HashMap<String,std::sync::Arc<::Media>>>,
 }
 
 pub struct ServerFactory<F> {
@@ -41,7 +41,6 @@ pub struct ServerFactory<F> {
 
 impl<F> ServerFactory<F> {
 	pub fn new(args: ServerArgs<F>) -> Self {
-		println!("ServerFactory spawning server.");
 		ServerFactory {
 			uri: args.uri,
 			remote: args.remote,
@@ -82,7 +81,6 @@ impl Server {
 		F: Fn() -> tokio_core::reactor::Remote>
 		(factory: &ServerFactory<F>) -> Self
 	{
-		println!("dlna::server::Server::new()");
 		Server {
 			uri: factory.uri.clone(),
 			root: factory.root.clone(),
@@ -157,31 +155,71 @@ impl ServerRef {
 	fn call_video(&self, req: dlna::Request) -> ::Result<hyper::Response> {
 		let path = req.decoded_path()?;
 		
-		let start = match req.req.headers().get() {
-			Some(&hyper::header::Range::Bytes(ref spec)) => match spec.first() {
-				Some(&hyper::header::ByteRangeSpec::FromTo(from, _)) => from,
-				Some(&hyper::header::ByteRangeSpec::AllFrom(from)) => from,
-				_ => 0,
-			}
-			_ => 0,
-		};
-		
-		let content = {
-			let mut cache = self.0.shared.transcode_cache.lock().unwrap();
-			println!("Cache: {:?}", *cache);
-			match cache.entry(path.clone()) {
+		let media = {
+			match self.0.shared.transcode_cache.lock().unwrap().entry(path.clone()) {
 				std::collections::hash_map::Entry::Occupied(e) => {
 					println!("Transcode cache hit!");
-					e.get().read_range(start, 0)
+					e.get().clone()
 				},
 				std::collections::hash_map::Entry::Vacant(e) => {
 					println!("Transcode cache miss!");
 					let item = self.0.root.lookup(&path)?;
 					let media = item.transcoded_body(&self.0.exec)?;
-					let content = media.read_range(start, 0);
-					e.insert(media);
-					content
+					e.insert(media.clone());
+					media
 				}
+			}
+		};
+		
+		let mut response = hyper::Response::new();
+		response.headers_mut().set(hyper::header::AcceptRanges(vec![
+			hyper::header::RangeUnit::Bytes,
+		]));
+		
+		let size = media.size();
+		
+		let range = req.req.headers().get::<hyper::header::Range>()
+			.and_then(|range| match *range {
+				hyper::header::Range::Bytes(ref spec) => Some(spec),
+				_ => None,
+			})
+			.and_then(|spec| spec.first())
+			.and_then(|range| match *range {
+				hyper::header::ByteRangeSpec::FromTo(start, end) => {
+					if start < size.available {
+						Some((start, end.min(size.available-1)))
+					} else {
+						None
+					}
+				},
+				hyper::header::ByteRangeSpec::AllFrom(start) => {
+					if start < size.available {
+						Some((start, size.available-1))
+					} else {
+						None
+					}
+				},
+				hyper::header::ByteRangeSpec::Last(_) => {
+					None
+				}
+			});
+		
+		let content = match range {
+			Some((start, end)) => {
+				response.set_status(hyper::StatusCode::PartialContent);
+				response.headers_mut().set(hyper::header::ContentRange(
+					hyper::header::ContentRangeSpec::Bytes{
+						range: Some((start, end)),
+						instance_length: size.total,
+					}));
+				response.headers_mut().set(hyper::header::ContentLength(end+1-start));
+				media.read_range(start, end+1)
+			},
+			None => {
+				if let Some(size) = size.total {
+					response.headers_mut().set(hyper::header::ContentLength(size));
+				}
+				media.read_all() // No range.
 			}
 		};
 		
@@ -195,20 +233,6 @@ impl ServerRef {
 				.map(|_| ())
 				.then(|r| r.chain_err(|| "Error sending body.")))?;
 		
-		let mut response = hyper::Response::new();
-		response.headers_mut().set(hyper::header::AcceptRanges(vec![
-			hyper::header::RangeUnit::Bytes,
-		]));
-		if start != 0 {
-			response.set_status(hyper::StatusCode::PartialContent);
-			response.headers_mut().set(hyper::header::ContentRange(
-				hyper::header::ContentRangeSpec::Bytes{
-					range: Some((start, i64::max_value() as u64)),
-					instance_length: Some(i64::max_value() as u64),
-				})
-			);
-		}
-		// response.headers_mut().set(hyper::header::ContentLength(1000000000));
 		println!("Response: {:?}", response);
 		response.set_body(body);
 		Ok(response)
@@ -270,11 +294,11 @@ fn respond_ok(res: hyper::Response) -> BoxedResponse {
 fn respond_soap<T: serde::Serialize + std::fmt::Debug>
 	(body: T) -> ::error::Result<hyper::Response>
 {
-	println!("Responding with: {:#?}", body);
+	// println!("Responding with: {:#?}", body);
 	let mut buf = Vec::new();
 	::xml::serialize(&mut buf, dlna::types::Envelope{body})
 		.chain_err(|| "Error serializing XML.")?;
-	println!("Emitting xml: {}", String::from_utf8_lossy(&buf));
+	// println!("Emitting xml: {}", String::from_utf8_lossy(&buf));
 	Ok(hyper::Response::new().with_body(buf))
 }
 
@@ -317,7 +341,8 @@ impl hyper::server::Service for ServerRef {
 	type Future = Box<futures::Future<Item=hyper::Response, Error=hyper::Error>>;
 	
 	fn call(&self, req: Self::Request) -> Self::Future {
-		println!("{:?}", req);
+		if !req.path().ends_with(".xml") { println!("{:?}", req) }
+		
 		let req = dlna::Request::new(req);
 		Box::new(self.call_root(req).or_else(|e| {
 			println!("{}", e.display_chain());
