@@ -1,4 +1,7 @@
+use futures;
+use futures::Future;
 use std;
+use std::io::Seek;
 use std::sync::Arc;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 
@@ -111,10 +114,38 @@ impl ::Object for Object {
 		Ok(::ffmpeg::Input::Uri(&self.path))
 	}
 	
-	fn body(&self, _exec: &::Executors) -> ::Result<::ByteStream> {
-		let file = std::fs::File::open(&self.path)
-			.chain_err(|| format!("Error opening {:?}", self.path))?;
-		Ok(Box::new(::ReadStream(file)))
+	fn body(&self, _exec: &::Executors) -> ::Result<std::sync::Arc<::Media>> {
+		Ok(std::sync::Arc::new(Media{path: self.path.clone()}))
+	}
+}
+
+#[derive(Debug)]
+struct Media {
+	path: std::path::PathBuf,
+}
+
+impl ::Media for Media {
+	fn size(&self) -> ::MediaSize {
+		let s = self.path.metadata().map(|m| m.len()).unwrap_or(0);
+		::MediaSize {
+			available: s,
+			total: Some(s),
+		}
+	}
+	
+	fn read_offset(&self, start: u64) -> ::ByteStream {
+		let mut file = match std::fs::File::open(&self.path) {
+			Ok(f) => f,
+			Err(e) => {
+				let e = ::Error::with_chain(e, format!("Error opening {:?}", self.path));
+				return Box::new(futures::future::err(e).into_stream())
+			}
+		};
+		if let Err(e) = file.seek(std::io::SeekFrom::Start(start)) {
+			let e = ::Error::with_chain(e, format!("Error seeking {:?}", self.path));
+			return Box::new(futures::future::err(e).into_stream())
+		}
+		Box::new(::ReadStream(file))
 	}
 }
 

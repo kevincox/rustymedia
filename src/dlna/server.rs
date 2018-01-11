@@ -109,7 +109,7 @@ impl ServerRef {
 			}
 			"connection" => self.call_connection(req),
 			"content" => self.call_content(req),
-			"video" => Box::new(futures::future::result(self.call_video(req))),
+			"video" => self.call_video(req),
 			_ => call_not_found(req),
 		}
 	}
@@ -152,90 +152,107 @@ impl ServerRef {
 		}
 	}
 	
-	fn call_video(&self, req: dlna::Request) -> ::Result<hyper::Response> {
-		let path = req.decoded_path()?;
-		
-		let media = {
-			match self.0.shared.transcode_cache.lock().unwrap().entry(path.clone()) {
-				std::collections::hash_map::Entry::Occupied(e) => {
-					println!("Transcode cache hit!");
-					e.get().clone()
-				},
-				std::collections::hash_map::Entry::Vacant(e) => {
-					println!("Transcode cache miss!");
-					let item = self.0.root.lookup(&path)?;
-					let media = item.transcoded_body(&self.0.exec)?;
-					e.insert(media.clone());
-					media
-				}
-			}
+	fn call_video(&self, req: dlna::Request) -> BoxedResponse {
+		let path = match req.decoded_path() {
+			Ok(p) => p,
+			Err(e) => return respond_err(e),
+		};
+		let item = match self.0.root.lookup(&path) {
+			Ok(path) => path,
+			Err(e) => return respond_err(e),
 		};
 		
-		let mut response = hyper::Response::new();
-		response.headers_mut().set(hyper::header::AcceptRanges(vec![
-			hyper::header::RangeUnit::Bytes,
-		]));
+		let server = self.0.clone();
+		let server2 = self.0.clone();
 		
-		let size = media.size();
-		
-		let range = req.req.headers().get::<hyper::header::Range>()
-			.and_then(|range| match *range {
-				hyper::header::Range::Bytes(ref spec) => Some(spec),
-				_ => None,
-			})
-			.and_then(|spec| spec.first())
-			.and_then(|range| match *range {
-				hyper::header::ByteRangeSpec::FromTo(start, end) => {
-					if start < size.available {
-						Some((start, end.min(size.available-1)))
-					} else {
-						None
+		let r = item.format(&server.exec)
+			.map(|f| f.transcode_for(&::devices::CHROMECAST))
+			.and_then(move |target| match target {
+				Some(t) => {
+					match server.shared.transcode_cache.lock().unwrap().entry(path.clone()) {
+						std::collections::hash_map::Entry::Occupied(e) => {
+							println!("Transcode cache hit!");
+							Ok(e.get().clone())
+						},
+						std::collections::hash_map::Entry::Vacant(e) => {
+							println!("Transcode cache miss!");
+							let media = item.transcoded_body(&server.exec, t)?;
+							e.insert(media.clone());
+							Ok(media)
+						}
 					}
-				},
-				hyper::header::ByteRangeSpec::AllFrom(start) => {
-					if start < size.available {
-						Some((start, size.available-1))
-					} else {
-						None
-					}
-				},
-				hyper::header::ByteRangeSpec::Last(_) => {
-					None
 				}
+				None => item.body(&server.exec),
+			})
+			.and_then(move |media| {
+				let mut response = hyper::Response::new();
+				response.headers_mut().set(hyper::header::AcceptRanges(vec![
+					hyper::header::RangeUnit::Bytes,
+				]));
+				
+				let size = media.size();
+				
+				let range = req.req.headers().get::<hyper::header::Range>()
+					.and_then(|range| match *range {
+						hyper::header::Range::Bytes(ref spec) => Some(spec),
+						_ => None,
+					})
+					.and_then(|spec| spec.first())
+					.and_then(|range| match *range {
+						hyper::header::ByteRangeSpec::FromTo(start, end) => {
+							if start < size.available {
+								Some((start, end.min(size.available-1)))
+							} else {
+								None
+							}
+						},
+						hyper::header::ByteRangeSpec::AllFrom(start) => {
+							if start < size.available {
+								Some((start, size.available-1))
+							} else {
+								None
+							}
+						},
+						hyper::header::ByteRangeSpec::Last(_) => {
+							None
+						}
+					});
+				
+				let content = match range {
+					Some((start, end)) => {
+						response.set_status(hyper::StatusCode::PartialContent);
+						response.headers_mut().set(hyper::header::ContentRange(
+							hyper::header::ContentRangeSpec::Bytes{
+								range: Some((start, end)),
+								instance_length: size.total,
+							}));
+						response.headers_mut().set(hyper::header::ContentLength(end+1-start));
+						media.read_range(start, end+1)
+					},
+					None => {
+						if let Some(size) = size.total {
+							response.headers_mut().set(hyper::header::ContentLength(size));
+						}
+						media.read_all() // No range.
+					}
+				};
+				
+				let content = content
+					.map(|c| Ok(c.into()))
+					.map_err(|e| e.into());
+				
+				let (sender, body) = hyper::Body::pair();
+				server2.exec.spawn(
+					sender.send_all(content)
+						.map(|_| ())
+						.then(|r| r.chain_err(|| "Error sending body.")))?;
+				
+				println!("Response: {:?}", response);
+				response.set_body(body);
+				Ok(response)
 			});
 		
-		let content = match range {
-			Some((start, end)) => {
-				response.set_status(hyper::StatusCode::PartialContent);
-				response.headers_mut().set(hyper::header::ContentRange(
-					hyper::header::ContentRangeSpec::Bytes{
-						range: Some((start, end)),
-						instance_length: size.total,
-					}));
-				response.headers_mut().set(hyper::header::ContentLength(end+1-start));
-				media.read_range(start, end+1)
-			},
-			None => {
-				if let Some(size) = size.total {
-					response.headers_mut().set(hyper::header::ContentLength(size));
-				}
-				media.read_all() // No range.
-			}
-		};
-		
-		let content = content
-			.map(|c| Ok(c.into()))
-			.map_err(|e| e.into());
-		
-		let (sender, body) = hyper::Body::pair();
-		self.0.exec.spawn(
-			sender.send_all(content)
-				.map(|_| ())
-				.then(|r| r.chain_err(|| "Error sending body.")))?;
-		
-		println!("Response: {:?}", response);
-		response.set_body(body);
-		Ok(response)
+		Box::new(r)
 	}
 		
 	fn call_dlna_browse(self, body: dlna::types::Body) -> ::Result<hyper::Response> {
@@ -289,6 +306,10 @@ impl ServerRef {
 
 fn respond_ok(res: hyper::Response) -> BoxedResponse {
 	Box::new(futures::future::ok(res))
+}
+
+fn respond_err(e: ::error::Error) -> BoxedResponse {
+	Box::new(futures::future::err(e))
 }
 
 fn respond_soap<T: serde::Serialize + std::fmt::Debug>

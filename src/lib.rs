@@ -1,4 +1,4 @@
-#![recursion_limit="512"] 
+#![recursion_limit="512"]
 
 extern crate bytes;
 extern crate futures;
@@ -17,9 +17,11 @@ extern crate tokio_file_unix;
 extern crate tokio_io;
 
 use error_chain::ChainedError;
-use futures::future::{Executor, Future as _Future};
+use futures::future::{Executor};
+use futures::Stream;
 
 mod config;
+mod devices;
 pub mod dlna;
 mod error;
 mod ffmpeg;
@@ -62,7 +64,7 @@ pub enum Type {
 impl<T: std::io::Read> futures::Stream for ReadStream<T> {
 	type Item = Vec<u8>;
 	type Error = Error;
-	
+
 	fn poll(&mut self) -> futures::Poll<Option<Self::Item>, Error> {
 		let buf_size = 16 * 4 * 1024;
 		let mut buf = Vec::with_capacity(buf_size);
@@ -70,7 +72,7 @@ impl<T: std::io::Read> futures::Stream for ReadStream<T> {
 		let len = self.0.read(&mut buf)?;
 		unsafe { buf.set_len(len); }
 		// println!("READ: {}/{} ({})", len, buf_size, len as f64 / buf_size as f64);
-		
+
 		if len == 0 {
 			Ok(futures::Async::Ready(None))
 		} else {
@@ -83,7 +85,7 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 	fn id(&self) -> &str;
 	fn parent_id(&self) -> &str;
 	fn file_type(&self) -> Type;
-	
+
 	fn dlna_class(&self) -> &'static str {
 		match self.file_type() {
 			Type::Directory => "object.container.storageFolder",
@@ -92,14 +94,14 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 			Type::Other => "object.item",
 		}
 	}
-	
+
 	fn title(&self) -> String;
-	
+
 	fn is_dir(&self) -> bool;
 	fn lookup(&self, id: &str) -> Result<Box<Object>>;
-	
+
 	fn children(&self) -> Result<Vec<Box<Object>>>;
-	
+
 	fn video_children(&self) -> Result<Vec<Box<Object>>> {
 		let mut children = self.children()?;
 		children.retain(|c|
@@ -108,21 +110,26 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 		children.sort_by(|l, r| human_order(l.id(), r.id()));
 		Ok(children)
 	}
-	
+
 	fn ffmpeg_input(&self, exec: &Executors) -> Result<::ffmpeg::Input> {
-		Ok(::ffmpeg::Input::Stream(self.body(exec)?))
+		Ok(::ffmpeg::Input::Stream(self.body(exec)?.read_all()))
 	}
-	
-	fn body(&self, _exec: &Executors) -> Result<ByteStream> {
+
+	fn format(&self, exec: &Executors) -> Future<::ffmpeg::Format> {
+		let ffmpeg_input = match self.ffmpeg_input(exec) {
+			Ok(input) => input,
+			Err(e) => return Box::new(futures::future::err(e)),
+		};
+		::ffmpeg::format(ffmpeg_input, exec)
+	}
+
+	fn body(&self, _exec: &Executors) -> Result<std::sync::Arc<Media>> {
 		Err(ErrorKind::NotAFile(self.id().to_string()).into())
 	}
-	
-	fn transcoded_body(&self, exec: &Executors) -> ::Result<std::sync::Arc<Media>> {
-		// exec.spawn(
-		// 	::ffmpeg::format(::ffmpeg::Input::Stream(self.body(exec).unwrap()), exec)
-		// 		.then(|r| Ok(println!("Finished: {:?}", r)))).unwrap();
-		
-		::ffmpeg::transcode(self.ffmpeg_input(exec).unwrap(), exec)
+
+	fn transcoded_body(&self, exec: &Executors, target: ::ffmpeg::Target)
+		-> Result<std::sync::Arc<Media>> {
+		::ffmpeg::transcode(target, self.ffmpeg_input(exec)?, exec)
 	}
 }
 
@@ -133,9 +140,29 @@ pub struct MediaSize {
 
 pub trait Media: Send + Sync + std::fmt::Debug {
 	fn size(&self) -> MediaSize;
-	
-	fn read_all(&self) -> ByteStream;
-	fn read_range(&self, start: u64, end: u64) -> ByteStream;
+
+	fn read_offset(&self, start: u64) -> ::ByteStream;
+
+	fn read_all(&self) -> ByteStream {
+		self.read_offset(0)
+	}
+
+	fn read_range(&self, start: u64, end: u64) -> ByteStream {
+		let mut end = end;
+		let r = self.read_offset(start)
+			.map(move |mut chunk| {
+				if (chunk.len() as u64) < end {
+					end -= chunk.len() as u64;
+					chunk
+				} else {
+					chunk.truncate(end as usize);
+					end = 0;
+					chunk
+				}
+			})
+			.take_while(|chunk| Ok(!chunk.is_empty()));
+		Box::new(r)
+	}
 }
 
 #[derive(Debug,Eq,PartialEq,PartialOrd)]
@@ -156,7 +183,7 @@ struct ChunkIter<'a>(&'a str);
 
 impl<'a> Iterator for ChunkIter<'a> {
 	type Item = Chunk<'a>;
-	
+
 	fn next(&mut self) -> Option<Self::Item> {
 		if let Some(first) = self.0.chars().next() {
 			if let Some(i) = self.0.find(|c: char| c.is_digit(10) != first.is_digit(10)) {
@@ -183,7 +210,7 @@ fn human_order(l: &str, r: &str) -> std::cmp::Ordering {
 #[test]
 fn test_human_order() {
 	use std::cmp::Ordering::*;
-	
+
 	assert_eq!(human_order("foo", "bar"), Greater);
 	assert_eq!(human_order("bar", "foo"), Less);
 	assert_eq!(human_order("bar", "bar"), Equal);
