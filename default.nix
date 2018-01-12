@@ -13,6 +13,7 @@ in rec {
 			(lib.hasPrefix (toString ./Cargo) name)) ./.;
 		
 		FFMPEG_BINARY = "${ffmpeg}/bin/ffmpeg";
+		FFPROBE_BINARY = "${ffmpeg}/bin/ffprobe";
 		
 		doCheck = false;
 	};

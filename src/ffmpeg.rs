@@ -327,7 +327,7 @@ impl futures::Stream for MediaStream {
 pub fn transcode(target: Format, input: Input, exec: &::Executors)
 	-> ::Result<std::sync::Arc<::Media>> {
 	let mut cmd = start_ffmpeg();
-	// cmd.stderr(std::process::Stdio::null());
+	cmd.stderr(std::process::Stdio::null());
 	add_input(input, exec, &mut cmd)?;
 	
 	cmd.arg("-c:v").arg(target.video.as_ref().map(|f| f.ffmpeg_id()).unwrap_or("copy"));
