@@ -30,12 +30,6 @@ pub enum Input<'a> {
 	Stream(::ByteStream),
 }
 
-pub struct Target {
-	pub container: ContainerFormat,
-	pub audio: Option<AudioFormat>,
-	pub video: Option<VideoFormat>,
-}
-
 fn add_input(input: Input, exec: &::Executors, cmd: &mut std::process::Command) -> ::Result<()> {
 	match input {
 		Input::Uri(uri) => { cmd.arg("-i").arg(uri); }
@@ -55,15 +49,26 @@ fn add_input(input: Input, exec: &::Executors, cmd: &mut std::process::Command) 
 	Ok(())
 }
 
-#[derive(Clone,Debug)]
+#[derive(Clone,Debug,PartialEq)]
 pub enum ContainerFormat {
 	MKV,
+	MOV,
+	MP4,
+	WAV,
+	WEBM,
+	
+	Other(String),
 }
 
 impl ContainerFormat {
 	fn ffmpeg_id(&self) -> &str {
 		match *self {
 			ContainerFormat::MKV => "matroska",
+			ContainerFormat::MOV => "mov",
+			ContainerFormat::MP4 => "mp4",
+			ContainerFormat::WAV => "wav",
+			ContainerFormat::WEBM => "webm",
+			ContainerFormat::Other(ref s) => s,
 		}
 	}
 }
@@ -71,6 +76,11 @@ impl ContainerFormat {
 #[derive(Clone,Debug,PartialEq)]
 pub enum AudioFormat {
 	AAC,
+	FLAC,
+	MP3,
+	Opus,
+	Vorbis,
+	
 	Other(String),
 }
 
@@ -78,6 +88,10 @@ impl AudioFormat {
 	fn ffmpeg_id(&self) -> &str {
 		match *self {
 			AudioFormat::AAC => "aac",
+			AudioFormat::FLAC => "flac",
+			AudioFormat::MP3 => "mp3",
+			AudioFormat::Opus => "libopus",
+			AudioFormat::Vorbis => "libvorbis",
 			AudioFormat::Other(ref s) => s,
 		}
 	}
@@ -86,6 +100,7 @@ impl AudioFormat {
 #[derive(Clone,Debug,PartialEq)]
 pub enum VideoFormat {
 	H264,
+	VP8,
 	Other(String),
 }
 
@@ -93,6 +108,7 @@ impl VideoFormat {
 	fn ffmpeg_id(&self) -> &str {
 		match *self {
 			VideoFormat::H264 => "h264",
+			VideoFormat::VP8 => "vp8",
 			VideoFormat::Other(ref s) => s,
 		}
 	}
@@ -100,22 +116,26 @@ impl VideoFormat {
 
 #[derive(Debug)]
 pub struct Format {
+	container: ContainerFormat,
 	audio: Option<AudioFormat>,
 	video: Option<VideoFormat>,
 }
 
 impl Format {
-	pub fn transcode_for(&self, device: &Device) -> Option<Target> {
+	pub fn transcode_for(&self, device: &Device) -> Option<Format> {
 		let video = self.video.as_ref()
 			.and_then(|f| if device.video.contains(f) { None } else { device.video.first() });
 		let audio = self.audio.as_ref()
 			.and_then(|f| if device.audio.contains(f) { None } else { device.audio.first() });
 		
 		// TODO check container is compatible.
-		if video.is_none() && audio.is_none() {
+		if device.container.contains(&self.container) &&
+			video.is_none() &&
+			audio.is_none()
+		{
 			None
 		} else {
-			Some(Target {
+			Some(Format {
 				container: device.container[0].clone(),
 				video: video.map(|v| v.clone()),
 				audio: audio.map(|a| a.clone()),
@@ -133,7 +153,13 @@ pub struct Device {
 
 #[derive(Deserialize)]
 struct Ffprobe {
+	format: FfprobeFormat,
 	streams: Vec<FfprobeStream>,
+}
+
+#[derive(Deserialize)]
+struct FfprobeFormat {
+	format_name: String,
 }
 
 #[derive(Deserialize)]
@@ -153,6 +179,7 @@ pub fn format(input: Input, exec: &::Executors) -> ::Future<Format> {
 	
 	cmd.arg("-of").arg("json");
 	cmd.arg("-show_streams");
+	cmd.arg("-show_entries").arg("format=format_name");
 	
 	// println!("Executing: {:?}", cmd);
 	
@@ -162,13 +189,27 @@ pub fn format(input: Input, exec: &::Executors) -> ::Future<Format> {
 	};
 	
 	Box::new(futures::future::lazy(move || {
-		let probe: Ffprobe = serde_json::from_reader(child.stdout.unwrap())?;
+		let Ffprobe{
+			format: FfprobeFormat{format_name},
+			streams,
+		} = serde_json::from_reader(child.stdout.unwrap())?;
+		
+		let container = match format_name.as_ref() {
+			"mov" | "mov,mp4,m4a,3gp,3g2,mj2" => ContainerFormat::MOV,
+			"matroska" | "matroska,webm" => ContainerFormat::MKV,
+			_ => {
+				println!("Unknown container format: {:?}", format_name);
+				ContainerFormat::Other(format_name)
+			}
+		};
+		
 		let mut format = Format {
+			container,
 			audio: None,
 			video: None,
 		};
 		
-		for stream in probe.streams.into_iter().rev() {
+		for stream in streams.into_iter().rev() {
 			let FfprobeStream{codec_type, codec_name, ..} = stream;
 			
 			match (codec_type.as_ref(), codec_name.as_ref()) {
@@ -180,10 +221,12 @@ pub fn format(input: Input, exec: &::Executors) -> ::Future<Format> {
 					format.audio = Some(AudioFormat::AAC),
 				("audio", codec) =>
 					format.audio = Some(AudioFormat::Other(codec.to_string())),
+				("subtitle", _) => {},
 				other => println!("Ignoring unknown stream {:?}", other),
 			}
 		}
 		
+		println!("{:?}", format);
 		Ok(format)
 	}))
 }
@@ -281,10 +324,10 @@ impl futures::Stream for MediaStream {
 	}
 }
 
-pub fn transcode(target: Target, input: Input, exec: &::Executors)
+pub fn transcode(target: Format, input: Input, exec: &::Executors)
 	-> ::Result<std::sync::Arc<::Media>> {
 	let mut cmd = start_ffmpeg();
-	cmd.stderr(std::process::Stdio::null());
+	// cmd.stderr(std::process::Stdio::null());
 	add_input(input, exec, &mut cmd)?;
 	
 	cmd.arg("-c:v").arg(target.video.as_ref().map(|f| f.ffmpeg_id()).unwrap_or("copy"));

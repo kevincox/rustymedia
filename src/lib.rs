@@ -127,7 +127,7 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 		Err(ErrorKind::NotAFile(self.id().to_string()).into())
 	}
 
-	fn transcoded_body(&self, exec: &Executors, target: ::ffmpeg::Target)
+	fn transcoded_body(&self, exec: &Executors, target: ::ffmpeg::Format)
 		-> Result<std::sync::Arc<Media>> {
 		::ffmpeg::transcode(target, self.ffmpeg_input(exec)?, exec)
 	}
