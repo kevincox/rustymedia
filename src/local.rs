@@ -1,7 +1,7 @@
 use futures;
 use futures::Future;
 use std;
-use std::io::Seek;
+use std::io::{Read, Seek};
 use std::sync::Arc;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 
@@ -133,7 +133,7 @@ impl ::Media for Media {
 		}
 	}
 	
-	fn read_offset(&self, start: u64) -> ::ByteStream {
+	fn read_range(&self, start: u64, end: u64) -> ::ByteStream {
 		let mut file = match std::fs::File::open(&self.path) {
 			Ok(f) => f,
 			Err(e) => {
@@ -145,7 +145,7 @@ impl ::Media for Media {
 			let e = ::Error::with_chain(e, format!("Error seeking {:?}", self.path));
 			return Box::new(futures::future::err(e).into_stream())
 		}
-		Box::new(::ReadStream(file))
+		Box::new(::ReadStream(file.take(end)))
 	}
 }
 

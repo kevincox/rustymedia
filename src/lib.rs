@@ -18,7 +18,6 @@ extern crate tokio_io;
 
 use error_chain::ChainedError;
 use futures::future::{Executor};
-use futures::Stream;
 
 mod config;
 mod devices;
@@ -34,7 +33,28 @@ pub use error::{Error,ErrorKind,Result};
 pub type Future<T> = Box<futures::Future<Item=T, Error=Error> + Send>;
 pub type ByteStream = Box<futures::Stream<Item=Vec<u8>, Error=Error> + Send>;
 
+pub const CHUNK_SIZE: usize = 256 * 1024;
+
 struct ReadStream<T>(T);
+
+impl<T: std::io::Read> futures::Stream for ReadStream<T> {
+	type Item = Vec<u8>;
+	type Error = Error;
+
+	fn poll(&mut self) -> futures::Poll<Option<Self::Item>, Error> {
+		let mut buf = Vec::with_capacity(CHUNK_SIZE);
+		unsafe { buf.set_len(CHUNK_SIZE); }
+		let len = self.0.read(&mut buf)?;
+		unsafe { buf.set_len(len); }
+		// println!("READ: {}/{} ({})", len, buf_size, len as f64 / buf_size as f64);
+
+		if len == 0 {
+			Ok(futures::Async::Ready(None))
+		} else {
+			Ok(futures::Async::Ready(Some(buf)))
+		}
+	}
+}
 
 #[derive(Debug)]
 pub struct Executors {
@@ -59,26 +79,6 @@ pub enum Type {
 	Video,
 	Image,
 	Other,
-}
-
-impl<T: std::io::Read> futures::Stream for ReadStream<T> {
-	type Item = Vec<u8>;
-	type Error = Error;
-
-	fn poll(&mut self) -> futures::Poll<Option<Self::Item>, Error> {
-		let buf_size = 16 * 4 * 1024;
-		let mut buf = Vec::with_capacity(buf_size);
-		unsafe { buf.set_len(buf_size); }
-		let len = self.0.read(&mut buf)?;
-		unsafe { buf.set_len(len); }
-		// println!("READ: {}/{} ({})", len, buf_size, len as f64 / buf_size as f64);
-
-		if len == 0 {
-			Ok(futures::Async::Ready(None))
-		} else {
-			Ok(futures::Async::Ready(Some(buf)))
-		}
-	}
 }
 
 pub trait Object: Send + Sync + std::fmt::Debug {
@@ -141,27 +141,10 @@ pub struct MediaSize {
 pub trait Media: Send + Sync + std::fmt::Debug {
 	fn size(&self) -> MediaSize;
 
-	fn read_offset(&self, start: u64) -> ::ByteStream;
-
+	fn read_range(&self, start: u64, end: u64) -> ByteStream;
+	
 	fn read_all(&self) -> ByteStream {
-		self.read_offset(0)
-	}
-
-	fn read_range(&self, start: u64, end: u64) -> ByteStream {
-		let mut end = end;
-		let r = self.read_offset(start)
-			.map(move |mut chunk| {
-				if (chunk.len() as u64) < end {
-					end -= chunk.len() as u64;
-					chunk
-				} else {
-					chunk.truncate(end as usize);
-					end = 0;
-					chunk
-				}
-			})
-			.take_while(|chunk| Ok(!chunk.is_empty()));
-		Box::new(r)
+		self.read_range(0, u64::max_value())
 	}
 }
 

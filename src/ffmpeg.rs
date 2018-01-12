@@ -215,10 +215,6 @@ impl ::Media for Media {
 		}
 	}
 	
-	fn read_offset(&self, start: u64) -> ::ByteStream {
-		Box::new(MediaStream{file: self.file.clone(), offset: start, end: 0})
-	}
-	
 	fn read_range(&self, start: u64, end: u64) -> ::ByteStream {
 		Box::new(MediaStream{file: self.file.clone(), offset: start, end: end})
 	}
@@ -244,8 +240,7 @@ impl futures::Stream for MediaStream {
 	type Error = ::Error;
 	
 	fn poll(&mut self) -> futures::Poll<Option<Self::Item>, ::Error> {
-		let mut buf_size = 4 * 1024 * 1024;
-		if self.end > 0 { buf_size = buf_size.min((self.end - self.offset) as usize) }
+		let buf_size = ::CHUNK_SIZE.min((self.end - self.offset) as usize);
 		if buf_size == 0 { return Ok(futures::Async::Ready(None)) }
 		
 		let mut buf = Vec::with_capacity(buf_size);
@@ -318,7 +313,7 @@ pub fn transcode(target: Target, input: Input, exec: &::Executors)
 	
 	let media_file_thread = media_file.clone();
 	std::thread::spawn(move || {
-		let mut buf = [0; 1024*1024];
+		let mut buf = [0; ::CHUNK_SIZE];
 		let mut stdout = child.stdout.unwrap();
 		loop {
 			let size = stdout.read(&mut buf).unwrap();
