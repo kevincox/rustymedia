@@ -54,6 +54,7 @@ pub enum ContainerFormat {
 	MKV,
 	MOV,
 	MP4,
+	MPEGTS,
 	WAV,
 	WEBM,
 	
@@ -61,14 +62,17 @@ pub enum ContainerFormat {
 }
 
 impl ContainerFormat {
-	fn ffmpeg_id(&self) -> &str {
+	fn ffmpeg_encoder_and_flags(&self) -> &'static [&'static str] {
 		match *self {
-			ContainerFormat::MKV => "matroska",
-			ContainerFormat::MOV => "mov",
-			ContainerFormat::MP4 => "mp4",
-			ContainerFormat::WAV => "wav",
-			ContainerFormat::WEBM => "webm",
-			ContainerFormat::Other(ref s) => s,
+			ContainerFormat::MKV => &["matroska"],
+			ContainerFormat::MPEGTS => &["mpegts"],
+			ContainerFormat::MOV => &["mov", "-movflags", "+frag_keyframe"],
+			ContainerFormat::MP4 => &["ismv", "-movflags", "+frag_keyframe"],
+			ContainerFormat::WAV => 
+				unreachable!("WAV shouldn't be used because ffmpeg creates invalid WAV files."),
+			ContainerFormat::WEBM => &["webm"],
+			ContainerFormat::Other(ref s) =>
+				unreachable!("Unknown codec {:?} should never be used as a target.", s),
 		}
 	}
 }
@@ -105,11 +109,13 @@ pub enum VideoFormat {
 }
 
 impl VideoFormat {
-	fn ffmpeg_id(&self) -> &str {
+	fn ffmpeg_encoder_and_flags(&self) -> &'static [&'static str] {
 		match *self {
-			VideoFormat::H264 => "h264",
-			VideoFormat::VP8 => "vp8",
-			VideoFormat::Other(ref s) => s,
+			VideoFormat::H264 =>
+				&["h264", "-preset", "ultrafast", "-bsf:v", "h264_mp4toannexb"],
+			VideoFormat::VP8 => &["vp8"],
+			VideoFormat::Other(ref s) =>
+				unreachable!("Unknown codec {:?} should never be used as a target.", s),
 		}
 	}
 }
@@ -195,8 +201,10 @@ pub fn format(input: Input, exec: &::Executors) -> ::Future<Format> {
 		} = serde_json::from_reader(child.stdout.unwrap())?;
 		
 		let container = match format_name.as_ref() {
-			"mov" | "mov,mp4,m4a,3gp,3g2,mj2" => ContainerFormat::MOV,
 			"matroska" | "matroska,webm" => ContainerFormat::MKV,
+			"mov" | "mov,mp4,m4a,3gp,3g2,mj2" => ContainerFormat::MOV,
+			"mpegts" => ContainerFormat::MPEGTS,
+			"wav" => ContainerFormat::WAV,
 			_ => {
 				println!("Unknown container format: {:?}", format_name);
 				ContainerFormat::Other(format_name)
@@ -327,12 +335,13 @@ impl futures::Stream for MediaStream {
 pub fn transcode(target: Format, input: Input, exec: &::Executors)
 	-> ::Result<std::sync::Arc<::Media>> {
 	let mut cmd = start_ffmpeg();
-	cmd.stderr(std::process::Stdio::null());
+	// cmd.stderr(std::process::Stdio::null());
 	add_input(input, exec, &mut cmd)?;
 	
-	cmd.arg("-c:v").arg(target.video.as_ref().map(|f| f.ffmpeg_id()).unwrap_or("copy"));
+	cmd.arg("-c:v").args(target.video.as_ref().map(
+		|f| f.ffmpeg_encoder_and_flags()).unwrap_or(&["copy"]));
 	cmd.arg("-c:a").arg(target.audio.as_ref().map(|f| f.ffmpeg_id()).unwrap_or("copy"));
-	cmd.arg("-f").arg(target.container.ffmpeg_id());
+	cmd.arg("-f").args(target.container.ffmpeg_encoder_and_flags());
 	// cmd.arg("/tmp/rustymedia-tmp");
 	// cmd.arg("-y"); // Overwrite output files.
 	cmd.arg("pipe:");
