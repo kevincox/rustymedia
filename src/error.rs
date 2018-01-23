@@ -25,7 +25,7 @@ error_chain!{
 
 impl<T> Into<futures::sync::mpsc::SendError<T>> for Error {
 	fn into(self) -> futures::sync::mpsc::SendError<T> {
-		panic!("This conversion is not possible.")
+		panic!("Can't convert following into futures::sync::mpsc::SendError: {:?}", self)
 	}
 }
 

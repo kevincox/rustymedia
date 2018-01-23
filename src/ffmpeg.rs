@@ -1,11 +1,13 @@
 use futures;
 use futures::stream::Stream;
 use nix;
-use os_pipe;
 use os_pipe::IntoStdio;
+use os_pipe;
 use serde_json;
 use std;
-use std::io::{Read, Write};
+use std::io::{Write};
+use std::os::unix::fs::FileExt;
+use std::os::unix::io::FromRawFd;
 
 use error::ResultExt;
 
@@ -246,7 +248,7 @@ struct Media {
 
 #[derive(Debug)]
 struct MediaFile {
-	fd: std::os::unix::io::RawFd,
+	file: std::fs::File,
 	progress: std::sync::Mutex<MediaProgress>,
 }
 
@@ -278,8 +280,9 @@ struct MediaStream {
 }
 
 impl MediaStream {
-	fn read(&mut self, buf: &mut Vec<u8>) -> nix::Result<i64> {
-		let len = nix::sys::uio::pread(self.file.fd, buf, self.offset as i64)?;
+	fn read(&mut self, buf: &mut Vec<u8>) -> ::Result<i64> {
+		let len = self.file.file.read_at(buf, self.offset)
+			.chain_err(|| "Error reading in follower.")?;
 		// println!("STREAM read {}-{} size {}", self.offset, self.offset+len as u64, len);
 		unsafe { buf.set_len(len); }
 		return Ok(len as i64)
@@ -334,6 +337,12 @@ impl futures::Stream for MediaStream {
 
 pub fn transcode(target: Format, input: Input, exec: &::Executors)
 	-> ::Result<std::sync::Arc<::Media>> {
+	let fd = nix::fcntl::open(
+		"/tmp",
+		{ use nix::fcntl::*; O_APPEND | O_CLOEXEC | O_TMPFILE | O_RDWR },
+		{ use nix::sys::stat::*; S_IRUSR | S_IWUSR })?;
+	let file = unsafe { std::fs::File::from_raw_fd(fd) };
+	
 	let mut cmd = start_ffmpeg();
 	// cmd.stderr(std::process::Stdio::null());
 	add_input(input, exec, &mut cmd)?;
@@ -342,20 +351,19 @@ pub fn transcode(target: Format, input: Input, exec: &::Executors)
 		|f| f.ffmpeg_encoder_and_flags()).unwrap_or(&["copy"]));
 	cmd.arg("-c:a").arg(target.audio.as_ref().map(|f| f.ffmpeg_id()).unwrap_or("copy"));
 	cmd.arg("-f").args(target.container.ffmpeg_encoder_and_flags());
-	// cmd.arg("/tmp/rustymedia-tmp");
-	// cmd.arg("-y"); // Overwrite output files.
-	cmd.arg("pipe:");
-	cmd.stdout(std::process::Stdio::piped());
+	
+	cmd.arg("-y"); // "Overwrite" output files.
+	// Note: `pipe:` is always treated as unseekable so use /dev/stdout.
+	cmd.arg("/dev/stdout");
+	
+	cmd.stdout(file.try_clone()?);
 	
 	println!("Executing: {:?}", cmd);
 	
-	let child = cmd.spawn().chain_err(|| "Error executing ffmpeg")?;
+	let mut child = cmd.spawn().chain_err(|| "Error executing ffmpeg")?;
 	
 	let media_file = std::sync::Arc::new(MediaFile{
-		fd: nix::fcntl::open(
-			"/tmp",
-			{ use nix::fcntl::*; O_APPEND | O_CLOEXEC | O_TMPFILE | O_RDWR },
-			nix::sys::stat::Mode::empty())?,
+		file: file.try_clone()?,
 		progress: std::sync::Mutex::new(MediaProgress{
 			size: 0,
 			complete: false,
@@ -365,29 +373,34 @@ pub fn transcode(target: Format, input: Input, exec: &::Executors)
 	
 	let media_file_thread = media_file.clone();
 	std::thread::spawn(move || {
-		let mut buf = [0; ::CHUNK_SIZE];
-		let mut stdout = child.stdout.unwrap();
 		loop {
-			let size = stdout.read(&mut buf).unwrap();
-			if size == 0 {
-				break
+			std::thread::sleep(std::time::Duration::from_secs(1));
+			
+			match child.try_wait() {
+				Ok(Some(_)) => break,
+				Ok(None) => {},
+				Err(e) => eprintln!("Error waiting for ffmpeg: {:?}", e),
 			}
 			
-			let mut to_write = &buf[..size];
-			while !to_write.is_empty() {
-				let size = nix::unistd::write(media_file_thread.fd, &to_write).unwrap();
-				to_write = &to_write[size..];
-			}
-			
+			let metadata = file.metadata();
 			let mut progress = media_file_thread.progress.lock().unwrap();
-			progress.size += size as u64;
+			match metadata {
+				Ok(metadata) => progress.size = metadata.len(),
+				Err(e) => eprintln!("Error reading transcoded file size: {:?}", e),
+			}
+			
 			for task in progress.blocked.drain(..) {
 				task.notify();
 			}
 		}
 		
 		println!("Transcoding complete.");
+		let metadata = file.metadata();
 		let mut progress = media_file_thread.progress.lock().unwrap();
+		match metadata {
+			Ok(metadata) => progress.size = metadata.len(),
+			Err(e) => eprintln!("Error reading transcoded file size: {:?}", e),
+		}
 		progress.complete = true;
 		for task in progress.blocked.drain(..) {
 			task.notify();
