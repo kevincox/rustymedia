@@ -38,13 +38,13 @@ pub fn schedule_presence_broadcasts(
 	let broadcast_message = move |desc, data: &[u8]| {
 		socket.send(data)
 			.map(|bytes_written| if bytes_written != data.len() {
-				println!("W: sending of {} truncated.", desc); })
+				eprintln!("W: sending of {} truncated.", desc); })
 			.chain_err(|| format!("Error sending {}", desc))
 	};
 	
 	let broadcast_presence = move || -> ::error::Result<()> {
-		// println!("Broadcasting presence.");
-		// println!("{}", String::from_utf8_lossy(&msg_uuid));
+		// eprintln!("Broadcasting presence.");
+		// eprintln!("{}", String::from_utf8_lossy(&msg_uuid));
 		
 		// Spec recommends sending each packet 3 times. One seems fine for now.
 		for _ in 0..1 {
@@ -65,9 +65,9 @@ pub fn schedule_presence_broadcasts(
 		.for_each(move |_|
 			broadcast_presence()
 				.or_else(|e: ::error::Error| {
-					println!("Error broadcasting presence: {:?}", e);
+					eprintln!("Error broadcasting presence: {:?}", e);
 					Ok(())
 				})
 				.into_future())
-		.map_err(|e| { println!("Error at end of forever: {:?}", e); }));
+		.map_err(|e| { eprintln!("Error at end of forever: {:?}", e); }));
 }

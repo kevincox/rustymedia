@@ -60,7 +60,7 @@ impl ::Object for Object {
 		match self.id.rfind('/') {
 			Some(i) => &self.id[0..i],
 			None => {
-				println!("Can't find parent ID");
+				eprintln!("Can't find parent ID");
 				"0"
 			}
 		}
@@ -94,7 +94,7 @@ impl ::Object for Object {
 			.map(|osstr| std::path::Path::new(osstr));
 		base.extend(safepath);
 		
-		println!("Lookup: {:?}", base);
+		eprintln!("Lookup: {:?}", base);
 		
 		Self::new_boxed(self.root.clone(), base)
 	}

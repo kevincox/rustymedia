@@ -87,10 +87,10 @@ fn result_main() -> rustymedia::Result<()> {
 	
 	*handle.lock().unwrap() = Some(server.handle().remote().clone());
 	
-	println!("Listening on http://{}/", addr);
+	eprintln!("Listening on http://{}/", addr);
 	rustymedia::dlna::discovery::schedule_presence_broadcasts(server.handle(), addr);
 	server.run().unwrap();
-	println!("Done.");
+	eprintln!("Done.");
 	
 	Ok(())
 }

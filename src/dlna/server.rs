@@ -171,11 +171,11 @@ impl ServerRef {
 				Some(t) => {
 					match server.shared.transcode_cache.lock().unwrap().entry(path.clone()) {
 						std::collections::hash_map::Entry::Occupied(e) => {
-							println!("Transcode cache hit!");
+							eprintln!("Transcode cache hit!");
 							Ok(e.get().clone())
 						},
 						std::collections::hash_map::Entry::Vacant(e) => {
-							println!("Transcode cache miss!");
+							eprintln!("Transcode cache miss!");
 							let media = item.transcoded_body(&server.exec, t)?;
 							e.insert(media.clone());
 							Ok(media)
@@ -247,7 +247,7 @@ impl ServerRef {
 						.map(|_| ())
 						.then(|r| r.chain_err(|| "Error sending body.")))?;
 				
-				println!("Response: {:?}", response);
+				eprintln!("Response: {:?}", response);
 				response.set_body(body);
 				Ok(response)
 			});
@@ -315,16 +315,16 @@ fn respond_err(e: ::error::Error) -> BoxedResponse {
 fn respond_soap<T: serde::Serialize + std::fmt::Debug>
 	(body: T) -> ::error::Result<hyper::Response>
 {
-	// println!("Responding with: {:#?}", body);
+	// eprintln!("Responding with: {:#?}", body);
 	let mut buf = Vec::new();
 	::xml::serialize(&mut buf, dlna::types::Envelope{body})
 		.chain_err(|| "Error serializing XML.")?;
-	// println!("Emitting xml: {}", String::from_utf8_lossy(&buf));
+	// eprintln!("Emitting xml: {}", String::from_utf8_lossy(&buf));
 	Ok(hyper::Response::new().with_body(buf))
 }
 
 fn respond_soap_fault(msg: &str) -> BoxedResponse {
-	println!("Reporting fault via soap: {:?}", msg);
+	eprintln!("Reporting fault via soap: {:?}", msg);
 	Box::new(futures::future::result(respond_soap(dlna::types::BodyFault {
 		fault: dlna::types::Fault {
 			faultcode: "SOAP-ENV:Client",
@@ -337,14 +337,14 @@ fn call_not_found(req: dlna::Request) -> BoxedResponse {
 	let prefix = format!("404 {:?}", req.req);
 	Box::new(req.body_str_lossy()
 		.and_then(move |body| {
-			println!("{}\n{}\n404 End\n", prefix, body);
+			eprintln!("{}\n{}\n404 End\n", prefix, body);
 			Ok(hyper::Response::new()
 				.with_status(hyper::StatusCode::NotFound))
 		}))
 }
 
 fn call_method_not_allowed(req: dlna::Request) -> BoxedResponse {
-	println!("405 {:?}", req.req);
+	eprintln!("405 {:?}", req.req);
 	respond_ok(
 		hyper::Response::new()
 			.with_status(hyper::StatusCode::MethodNotAllowed))
@@ -362,11 +362,11 @@ impl hyper::server::Service for ServerRef {
 	type Future = Box<futures::Future<Item=hyper::Response, Error=hyper::Error>>;
 	
 	fn call(&self, req: Self::Request) -> Self::Future {
-		if !req.path().ends_with(".xml") { println!("{:?}", req) }
+		if !req.path().ends_with(".xml") { eprintln!("{:?}", req) }
 		
 		let req = dlna::Request::new(req);
 		Box::new(self.call_root(req).or_else(|e| {
-			println!("{}", e.display_chain());
+			eprintln!("{}", e.display_chain());
 			Ok(hyper::Response::new()
 				.with_status(hyper::StatusCode::InternalServerError)
 				.with_body("Internal Error"))

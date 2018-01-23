@@ -189,7 +189,7 @@ pub fn format(input: Input, exec: &::Executors) -> ::Future<Format> {
 	cmd.arg("-show_streams");
 	cmd.arg("-show_entries").arg("format=format_name");
 	
-	// println!("Executing: {:?}", cmd);
+	// eprintln!("Executing: {:?}", cmd);
 	
 	let child = match cmd.spawn().chain_err(|| "Error executing ffprobe") {
 		Ok(child) => child,
@@ -208,7 +208,7 @@ pub fn format(input: Input, exec: &::Executors) -> ::Future<Format> {
 			"mpegts" => ContainerFormat::MPEGTS,
 			"wav" => ContainerFormat::WAV,
 			_ => {
-				println!("Unknown container format: {:?}", format_name);
+				eprintln!("Unknown container format: {:?}", format_name);
 				ContainerFormat::Other(format_name)
 			}
 		};
@@ -232,11 +232,11 @@ pub fn format(input: Input, exec: &::Executors) -> ::Future<Format> {
 				("audio", codec) =>
 					format.audio = Some(AudioFormat::Other(codec.to_string())),
 				("subtitle", _) => {},
-				other => println!("Ignoring unknown stream {:?}", other),
+				other => eprintln!("Ignoring unknown stream {:?}", other),
 			}
 		}
 		
-		println!("{:?}", format);
+		eprintln!("{:?}", format);
 		Ok(format)
 	}))
 }
@@ -283,7 +283,7 @@ impl MediaStream {
 	fn read(&mut self, buf: &mut Vec<u8>) -> ::Result<i64> {
 		let len = self.file.file.read_at(buf, self.offset)
 			.chain_err(|| "Error reading in follower.")?;
-		// println!("STREAM read {}-{} size {}", self.offset, self.offset+len as u64, len);
+		// eprintln!("STREAM read {}-{} size {}", self.offset, self.offset+len as u64, len);
 		unsafe { buf.set_len(len); }
 		return Ok(len as i64)
 	}
@@ -324,7 +324,7 @@ impl futures::Stream for MediaStream {
 				Ok(futures::Async::Ready(None))
 			},
 			Ok(len) => {
-				// println!("READ: {}/{} ({})", len, buf_size, len as f64 / buf_size as f64);
+				// eprintln!("READ: {}/{} ({})", len, buf_size, len as f64 / buf_size as f64);
 				self.offset += len as u64;
 				Ok(futures::Async::Ready(Some(buf)))
 			}
@@ -358,7 +358,7 @@ pub fn transcode(target: Format, input: Input, exec: &::Executors)
 	
 	cmd.stdout(file.try_clone()?);
 	
-	println!("Executing: {:?}", cmd);
+	eprintln!("Executing: {:?}", cmd);
 	
 	let mut child = cmd.spawn().chain_err(|| "Error executing ffmpeg")?;
 	
@@ -394,7 +394,7 @@ pub fn transcode(target: Format, input: Input, exec: &::Executors)
 			}
 		}
 		
-		println!("Transcoding complete.");
+		eprintln!("Transcoding complete.");
 		let metadata = file.metadata();
 		let mut progress = media_file_thread.progress.lock().unwrap();
 		match metadata {

@@ -46,7 +46,7 @@ impl<T: std::io::Read> futures::Stream for ReadStream<T> {
 		unsafe { buf.set_len(CHUNK_SIZE); }
 		let len = self.0.read(&mut buf)?;
 		unsafe { buf.set_len(len); }
-		// println!("READ: {}/{} ({})", len, buf_size, len as f64 / buf_size as f64);
+		// eprintln!("READ: {}/{} ({})", len, buf_size, len as f64 / buf_size as f64);
 
 		if len == 0 {
 			Ok(futures::Async::Ready(None))
@@ -68,7 +68,7 @@ impl Executors {
 		(&self, f: F) -> Result<()>
 	{
 		self.cpupool.execute(
-			f.map_err(|e| { println!("Error in spawned future: {}", e.display_chain()); }))
+			f.map_err(|e| { eprintln!("Error in spawned future: {}", e.display_chain()); }))
 				.map_err(|e| e.into())
 	}
 }
