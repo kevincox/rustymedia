@@ -70,6 +70,7 @@ impl ::Object for Object {
 		if self.is_dir() { return ::Type::Directory }
 		
 		match self.path.extension().and_then(std::ffi::OsStr::to_str) {
+			Some("avi") => ::Type::Video,
 			Some("mkv") => ::Type::Video,
 			Some("mp4") => ::Type::Video,
 			_ => ::Type::Other,
