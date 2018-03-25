@@ -73,6 +73,7 @@ impl ::Object for Object {
 			Some("avi") => ::Type::Video,
 			Some("mkv") => ::Type::Video,
 			Some("mp4") => ::Type::Video,
+			Some("m4v") => ::Type::Video,
 			_ => ::Type::Other,
 		}
 	}
