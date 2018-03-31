@@ -275,7 +275,6 @@ impl ServerRef {
 					id: entry.id().to_string(),
 					title: entry.title(),
 					restricted: true,
-					child_count: 0,
 					class: entry.dlna_class(),
 					_start_body: ::xml::Body(()),
 				}),

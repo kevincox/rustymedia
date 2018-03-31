@@ -86,7 +86,6 @@ pub struct DidlLite {
 #[serde(rename="container",rename_all="camelCase")]
 pub struct Container {
 	pub id: String,
-	pub child_count: u64,
 	#[serde(rename="parentID")]
 	pub parent_id: String,
 	pub restricted: bool,
