@@ -4,6 +4,7 @@ use futures;
 use futures::{Future, Sink, Stream};
 use futures_cpupool;
 use hyper;
+use percent_encoding;
 use serde;
 use std;
 use tokio_core;
@@ -258,13 +259,16 @@ impl ServerRef {
 		
 		Box::new(r)
 	}
-		
+	
 	fn call_dlna_browse(self, body: dlna::types::Body) -> ::Result<hyper::Response> {
 		let object = self.0.root.lookup(&body.browse.object_id)?;
 		
 		let mut containers = Vec::new();
 		let mut items = Vec::new();
 		for entry in object.video_children()?.iter() {
+			let urlid = percent_encoding::percent_encode(
+				entry.id().as_bytes(),
+				percent_encoding::PATH_SEGMENT_ENCODE_SET);
 			match entry.is_dir() {
 				true => containers.push(dlna::types::Container {
 					parent_id: entry.parent_id().to_string(),
@@ -284,7 +288,7 @@ impl ServerRef {
 					res: vec![
 						dlna::types::Res {
 							protocol_info: "http-get:*:video/x-matroska:*".to_string(),
-							uri: ::xml::Body(format!("{}/video/{}", self.0.uri, entry.id())),
+							uri: ::xml::Body(format!("{}/video/{}", self.0.uri, urlid)),
 						},
 					],
 				}),
