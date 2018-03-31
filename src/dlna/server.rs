@@ -324,7 +324,9 @@ fn respond_soap<T: serde::Serialize + std::fmt::Debug>
 	::xml::serialize(&mut buf, dlna::types::Envelope{body})
 		.chain_err(|| "Error serializing XML.")?;
 	// eprintln!("Emitting xml: {}", String::from_utf8_lossy(&buf));
-	Ok(hyper::Response::new().with_body(buf))
+	Ok(hyper::Response::new()
+		.with_header(hyper::header::ContentType(hyper::mime::TEXT_XML))
+		.with_body(buf))
 }
 
 fn respond_soap_fault(msg: &str) -> BoxedResponse {
