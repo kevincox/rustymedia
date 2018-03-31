@@ -22,6 +22,7 @@ Folder Configuration:
 	
 Server Options:
 	-b --bind=<addr>  Serving socket bind address. [default: [::]:4950]
+	-n --name=<name>  Set the server name. [default: RustyMedia]
 	--uuid=<uuid>  Server UUID. [default: 06289e13-a832-4d76-be0b-00151d449864]
 
 Other Options:
@@ -32,6 +33,7 @@ Other Options:
 struct Args {
 	flag_bind: std::net::SocketAddr,
 	flag_local: Vec<String>,
+	flag_name: String,
 	flag_uuid: String,
 }
 
@@ -79,6 +81,7 @@ fn result_main() -> rustymedia::Result<()> {
 			uri: format!("http://{}", addr),
 			root: root.clone(),
 			remote: move || service_handle.lock().unwrap().as_ref().unwrap().clone(),
+			name: args.flag_name,
 			uuid: args.flag_uuid,
 		});
 	

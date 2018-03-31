@@ -3,7 +3,7 @@
 	<specVersion><major>1</major><minor>0</minor></specVersion>
 	<device>
 		<deviceType>urn:schemas-upnp-org:device:MediaServer:1</deviceType>
-		<friendlyName>rustymedia</friendlyName>
+		<friendlyName>{name}</friendlyName>
 		<manufacturer>Kevin Cox</manufacturer>
 		<manufacturerURL>https://kevincox.ca</manufacturerURL>
 		<modelDescription>model</modelDescription>

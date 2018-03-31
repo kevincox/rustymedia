@@ -21,6 +21,7 @@ pub struct ServerArgs<F> {
 	pub uri: String,
 	pub remote: F,
 	pub root: std::sync::Arc<::root::Root>,
+	pub name: String,
 	pub uuid: String,
 }
 
@@ -48,7 +49,10 @@ impl<F> ServerFactory<F> {
 			shared: std::sync::Arc::new(Shared {
 				transcode_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
 			}),
-			root_xml: format!(include_str!("root.xml"), uuid=args.uuid).into(),
+			root_xml: format!(include_str!("root.xml"),
+				name=args.name,
+				uuid=args.uuid
+			).into(),
 			
 			cpupool: std::sync::Arc::new(futures_cpupool::CpuPool::new(8)),
 		}
