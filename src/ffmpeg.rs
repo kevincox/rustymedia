@@ -106,6 +106,7 @@ impl AudioFormat {
 #[derive(Clone,Debug,PartialEq)]
 pub enum VideoFormat {
 	H264,
+	HVEC,
 	VP8,
 	Other(String),
 }
@@ -115,6 +116,8 @@ impl VideoFormat {
 		match *self {
 			VideoFormat::H264 =>
 				&["h264", "-preset", "ultrafast", "-bsf:v", "h264_mp4toannexb"],
+			VideoFormat::HVEC =>
+				&["libx265", "-preset", "ultrafast"],
 			VideoFormat::VP8 => &["vp8"],
 			VideoFormat::Other(ref s) =>
 				unreachable!("Unknown codec {:?} should never be used as a target.", s),
@@ -131,24 +134,23 @@ pub struct Format {
 
 impl Format {
 	pub fn transcode_for(&self, device: &Device) -> Option<Format> {
+		// Warning: Devices may have empty supported arrays to indicate they will take anything.
 		let video = self.video.as_ref()
 			.and_then(|f| if device.video.contains(f) { None } else { device.video.first() });
 		let audio = self.audio.as_ref()
 			.and_then(|f| if device.audio.contains(f) { None } else { device.audio.first() });
-		
-		// TODO check container is compatible.
-		if device.container.contains(&self.container) &&
-			video.is_none() &&
-			audio.is_none()
+
+		if (device.container.is_empty() || device.container.contains(&self.container))
+			&& video.is_none() && audio.is_none()
 		{
-			None
-		} else {
-			Some(Format {
-				container: device.container[0].clone(),
-				video: video.map(|v| v.clone()),
-				audio: audio.map(|a| a.clone()),
-			})
+			return None
 		}
+
+		Some(Format {
+			container: device.container.first().cloned().unwrap_or(ContainerFormat::MKV),
+			video: video.cloned(),
+			audio: audio.cloned(),
+		})
 	}
 }
 
@@ -225,6 +227,8 @@ pub fn format(input: Input, exec: &::Executors) -> ::Future<Format> {
 			match (codec_type.as_ref(), codec_name.as_ref()) {
 				("video", "h264") =>
 					format.video = Some(VideoFormat::H264),
+				("video", "hvec") =>
+					format.video = Some(VideoFormat::HVEC),
 				("video", codec) =>
 					format.video = Some(VideoFormat::Other(codec.to_string())),
 				("audio", "aac") =>

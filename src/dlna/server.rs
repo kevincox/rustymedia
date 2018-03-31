@@ -169,9 +169,11 @@ impl ServerRef {
 		
 		let server = self.0.clone();
 		let server2 = self.0.clone();
+
+		let device = ::devices::identify(&req.req);
 		
 		let r = item.format(&server.exec)
-			.map(|f| f.transcode_for(&::devices::CHROMECAST))
+			.map(move |f| f.transcode_for(device))
 			.and_then(move |target| match target {
 				Some(t) => {
 					match server.shared.transcode_cache.lock().unwrap().entry(path.clone()) {

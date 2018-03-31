@@ -2,7 +2,6 @@
 authors = ["Kevin Cox <kevincox@kevincox.ca>"]
 name = "rustymedia"
 version = "0.1.0"
-
 [dependencies]
 bytes = "0.4"
 docopt = "0.8"
@@ -11,10 +10,12 @@ error-chain = "0.11"
 futures = "0.1"
 futures-cpupool = "0.1"
 hyper = "0.11"
+lazy_static = "1.0.0"
 nix = "0.9"
 os_pipe = "0.6"
 percent-encoding = "1.0"
-pnet = "0.20"
+pnet = "0.21.0"
+regex = "0.2.10"
 serde = "1.0"
 serde-xml-rs = "0.2"
 serde_derive = "1.0"
@@ -22,6 +23,5 @@ serde_json = "1.0"
 tokio-core = "0.1"
 tokio-file-unix = "0.4"
 tokio-io = "0.1"
-
 [profile.release]
 debug = true
