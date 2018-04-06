@@ -30,7 +30,7 @@ impl Request {
 	fn path(&self) -> &str { &self.req.path()[self.path_offset..] }
 	
 	fn decoded_path(&self) -> ::Result<String> {
-		percent_encoding::percent_decode(self.path().replace('+', " ").as_bytes())
+		percent_encoding::percent_decode(self.path().as_bytes())
 			.decode_utf8()
 			.chain_err(|| "Error percent-decoding path to utf8")
 			.map(|s| s.to_string())
