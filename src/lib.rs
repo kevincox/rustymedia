@@ -170,19 +170,14 @@ impl<'a> Iterator for ChunkIter<'a> {
 	type Item = Chunk<'a>;
 
 	fn next(&mut self) -> Option<Self::Item> {
-		if let Some(first) = self.0.chars().next() {
-			if let Some(i) = self.0.find(|c: char| c.is_digit(10) != first.is_digit(10)) {
-				let r = &self.0[..i];
-				self.0 = &self.0[i..];
-				Some(Chunk(r))
-			} else {
-				let r = self.0;
-				self.0 = "";
-				Some(Chunk(r))
-			}
-		} else {
-			None
-		}
+		self.0.chars().next()
+			.map(|first| {
+				let (head, tail) = self.0.find(|c: char| c.is_digit(10) != first.is_digit(10))
+					.map(|i| self.0.split_at(i))
+					.unwrap_or((self.0, ""));
+				self.0 = tail;
+				Chunk(head.trim_left_matches('0'))
+			})
 	}
 }
 
@@ -202,4 +197,7 @@ fn test_human_order() {
 	assert_eq!(human_order("bar", "bar 10"), Less);
 	assert_eq!(human_order("bar 2", "bar 10"), Less);
 	assert_eq!(human_order("bar 20 59", "bar 20 8"), Greater);
+	assert_eq!(human_order("bar 07", "bar 02"), Greater);
+	assert_eq!(human_order("bar 07", "bar 2"), Greater);
+	assert_eq!(human_order("bar 7", "bar 02"), Greater);
 }
