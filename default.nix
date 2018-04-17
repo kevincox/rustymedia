@@ -7,7 +7,7 @@ in rec {
 			homepage = https://kevincox.ca;
 		};
 		
-		cargoSha256 = "";
+		cargoSha256 = null;
 		src = builtins.filterSource (name: type:
 			(lib.hasPrefix (toString ./src) name) ||
 			(lib.hasPrefix (toString ./Cargo) name)) ./.;
