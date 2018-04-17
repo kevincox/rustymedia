@@ -192,10 +192,11 @@ impl ServerRef {
 				None => item.body(&server.exec),
 			})
 			.and_then(move |media| {
-				let mut response = hyper::Response::new();
-				response.headers_mut().set(hyper::header::AcceptRanges(vec![
-					hyper::header::RangeUnit::Bytes,
-				]));
+				let mut response = hyper::Response::new()
+					.with_header(hyper::header::AcceptRanges(vec![
+						hyper::header::RangeUnit::Bytes,
+					]))
+					.with_header(hyper::header::ContentType::octet_stream());
 				
 				let size = media.size();
 				
@@ -330,7 +331,7 @@ fn respond_soap<T: serde::Serialize + std::fmt::Debug>
 		.chain_err(|| "Error serializing XML.")?;
 	// eprintln!("Emitting xml: {}", String::from_utf8_lossy(&buf));
 	Ok(hyper::Response::new()
-		.with_header(hyper::header::ContentType(hyper::mime::TEXT_XML))
+		.with_header(hyper::header::ContentType::xml())
 		.with_body(buf))
 }
 
