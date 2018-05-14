@@ -91,14 +91,15 @@ pub enum AudioFormat {
 }
 
 impl AudioFormat {
-	fn ffmpeg_id(&self) -> &str {
+	fn ffmpeg_id(&self) -> &'static [&'static str] {
 		match *self {
-			AudioFormat::AAC => "aac",
-			AudioFormat::FLAC => "flac",
-			AudioFormat::MP3 => "mp3",
-			AudioFormat::Opus => "libopus",
-			AudioFormat::Vorbis => "libvorbis",
-			AudioFormat::Other(ref s) => s,
+			AudioFormat::AAC => &["aac"],
+			AudioFormat::FLAC => &["flac"],
+			AudioFormat::MP3 => &["mp3"],
+			AudioFormat::Opus => &["opus", "-strict", "-2"],
+			AudioFormat::Vorbis => &["libvorbis"],
+			AudioFormat::Other(ref s) =>
+				unreachable!("Unknown codec {:?} should never be used as a target.", s),
 		}
 	}
 }
@@ -353,7 +354,8 @@ pub fn transcode(target: Format, input: Input, exec: &::Executors)
 	
 	cmd.arg("-c:v").args(target.video.as_ref().map(
 		|f| f.ffmpeg_encoder_and_flags()).unwrap_or(&["copy"]));
-	cmd.arg("-c:a").arg(target.audio.as_ref().map(|f| f.ffmpeg_id()).unwrap_or("copy"));
+	cmd.arg("-c:a").args(target.audio.as_ref().map(
+		|f| f.ffmpeg_id()).unwrap_or(&["copy"]));
 	cmd.arg("-f").args(target.container.ffmpeg_encoder_and_flags());
 	
 	cmd.arg("-y"); // "Overwrite" output files.
