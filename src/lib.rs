@@ -106,11 +106,16 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 
 	fn children(&self) -> Result<Vec<Box<Object>>>;
 
-	fn video_children(&self) -> Result<Vec<Box<Object>>> {
+	fn relevant_children(&self) -> Result<Vec<Box<Object>>> {
 		let mut children = self.children()?;
-		children.retain(|c|
-			c.file_type() == Type::Directory ||
-			c.file_type() == Type::Video);
+		children.retain(|c| match c.file_type() {
+			Type::Directory => true,
+			Type::Subtitles => true,
+			Type::Video => true,
+
+			Type::Image => false,
+			Type::Other => false,
+		});
 		children.sort_by(|l, r| human_order(l.id(), r.id()));
 		Ok(children)
 	}

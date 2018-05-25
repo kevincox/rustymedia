@@ -268,7 +268,7 @@ impl ServerRef {
 		
 		let mut containers = Vec::new();
 		let mut items = Vec::new();
-		for entry in object.video_children()?.iter() {
+		for entry in object.relevant_children()?.iter() {
 			let urlid = percent_encoding::percent_encode(
 				entry.id().as_bytes(),
 				percent_encoding::PATH_SEGMENT_ENCODE_SET);
