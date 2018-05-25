@@ -78,8 +78,9 @@ impl Executors {
 #[derive(PartialEq)]
 pub enum Type {
 	Directory,
-	Video,
 	Image,
+	Subtitles,
+	Video,
 	Other,
 }
 
@@ -91,8 +92,9 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 	fn dlna_class(&self) -> &'static str {
 		match self.file_type() {
 			Type::Directory => "object.container.storageFolder",
-			Type::Video => "object.item.videoItem",
 			Type::Image => "object.item.imageItem.photo",
+			Type::Subtitles => "object.item",
+			Type::Video => "object.item.videoItem",
 			Type::Other => "object.item",
 		}
 	}
