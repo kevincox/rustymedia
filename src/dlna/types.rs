@@ -83,6 +83,13 @@ pub struct DidlLite {
 }
 
 #[derive(Debug,Serialize)]
+#[serde(rename_all="SCREAMING_SNAKE_CASE")]
+pub enum WriteStatus {
+	Writable,
+	NotWritable,
+}
+
+#[derive(Debug,Serialize)]
 #[serde(rename="container",rename_all="camelCase")]
 pub struct Container {
 	pub id: String,
@@ -95,6 +102,8 @@ pub struct Container {
 	pub title: String,
 	#[serde(rename="upnp:class")]
 	pub class: &'static str,
+	#[serde(rename="upnp:writeStatus")]
+	pub write_status: WriteStatus,
 	
 	// #[serde(rename="albumArtURI")]
 	// pub album_art_uri: Vec<AlbumArtUri>,

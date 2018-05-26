@@ -277,15 +277,16 @@ impl ServerRef {
 					parent_id: entry.parent_id().to_string(),
 					id: entry.id().to_string(),
 					title: entry.title(),
-					restricted: true,
+					restricted: false,
 					class: entry.dlna_class(),
+					write_status: dlna::types::WriteStatus::Writable,
 					_start_body: ::xml::Body(()),
 				}),
 				false => items.push(dlna::types::Item {
 					parent_id: entry.parent_id().to_string(),
 					id: entry.id().to_string(),
 					title: entry.title(),
-					restricted: true,
+					restricted: false,
 					class: entry.dlna_class(),
 					res: vec![
 						dlna::types::Res {
@@ -329,7 +330,7 @@ fn respond_soap<T: serde::Serialize + std::fmt::Debug>
 	let mut buf = Vec::new();
 	::xml::serialize(&mut buf, dlna::types::Envelope{body})
 		.chain_err(|| "Error serializing XML.")?;
-	// eprintln!("Emitting xml: {}", String::from_utf8_lossy(&buf));
+	eprintln!("Emitting xml: {}", String::from_utf8_lossy(&buf));
 	Ok(hyper::Response::new()
 		.with_header(hyper::header::ContentType::xml())
 		.with_body(buf))

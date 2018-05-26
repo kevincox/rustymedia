@@ -143,10 +143,11 @@ impl<'a, W: Write> serde::ser::Serializer for &'a mut Serializer<W> {
 	}
 	
 	fn serialize_unit_variant(self,
-		_name: &'static str, _variant_index: u32, _variant: &'static str)
+		_name: &'static str, _variant_index: u32, variant: &'static str)
 		-> Result<Self::Ok>
 	{
-		Err(ErrorKind::Unsupported("serialize_unit_variant").into())
+		write!(self.writer, "{}", variant)?;
+		Ok(())
 	}
 	
 	fn serialize_newtype_struct<T: ?Sized + serde::Serialize>
