@@ -134,24 +134,26 @@ pub struct Format {
 }
 
 impl Format {
-	pub fn transcode_for(&self, device: &Device) -> Option<Format> {
+	pub fn compatible_with(&self, device: &Device) -> bool {
+		// Empty container is a hack to indicate that everything is supported.
+		return device.container.is_empty()
+			|| (device.container.contains(&self.container)
+				&& self.video.as_ref().map(|f| device.video.contains(&f)).unwrap_or(true)
+				&& self.audio.as_ref().map(|f| device.audio.contains(&f)).unwrap_or(true));
+	}
+
+	pub fn transcode_for(&self, device: &Device) -> Format {
 		// Warning: Devices may have empty supported arrays to indicate they will take anything.
 		let video = self.video.as_ref()
-			.and_then(|f| if device.video.contains(f) { None } else { device.video.first() });
+			.and_then(|f| if device.video.contains(f) { Some(f) } else { device.video.first() });
 		let audio = self.audio.as_ref()
-			.and_then(|f| if device.audio.contains(f) { None } else { device.audio.first() });
+			.and_then(|f| if device.audio.contains(f) { Some(f) } else { device.audio.first() });
 
-		if (device.container.is_empty() || device.container.contains(&self.container))
-			&& video.is_none() && audio.is_none()
-		{
-			return None
-		}
-
-		Some(Format {
+		Format {
 			container: device.container.first().cloned().unwrap_or(ContainerFormat::MKV),
 			video: video.cloned(),
 			audio: audio.cloned(),
-		})
+		}
 	}
 }
 
@@ -340,7 +342,7 @@ impl futures::Stream for MediaStream {
 	}
 }
 
-pub fn transcode(target: Format, input: Input, exec: &::Executors)
+pub fn transcode(source: &Format, target: &Format, input: Input, exec: &::Executors)
 	-> ::Result<std::sync::Arc<::Media>> {
 	let fd = nix::fcntl::open(
 		"/tmp",
@@ -352,10 +354,20 @@ pub fn transcode(target: Format, input: Input, exec: &::Executors)
 	// cmd.stderr(std::process::Stdio::null());
 	add_input(input, exec, &mut cmd)?;
 	
-	cmd.arg("-c:v").args(target.video.as_ref().map(
-		|f| f.ffmpeg_encoder_and_flags()).unwrap_or(&["copy"]));
-	cmd.arg("-c:a").args(target.audio.as_ref().map(
-		|f| f.ffmpeg_id()).unwrap_or(&["copy"]));
+	if let Some(ref f) = target.video {
+		cmd.arg("-c:v").args(if target.video == source.video {
+			&["copy"]
+		} else {
+			f.ffmpeg_encoder_and_flags()
+		});
+	}
+	if let Some(ref f) = target.audio {
+		cmd.arg("-c:a").args(if target.audio == source.audio {
+			&["copy"]
+		} else {
+			f.ffmpeg_id()
+		});
+	}
 	cmd.arg("-f").args(target.container.ffmpeg_encoder_and_flags());
 	
 	cmd.arg("-y"); // "Overwrite" output files.

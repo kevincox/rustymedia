@@ -14,6 +14,7 @@ extern crate regex;
 extern crate serde;
 extern crate serde_json;
 extern crate serde_xml_rs;
+extern crate smallvec;
 extern crate tokio_core;
 extern crate tokio_file_unix;
 extern crate tokio_io;
@@ -136,9 +137,12 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 		Err(ErrorKind::NotAFile(self.id().to_string()).into())
 	}
 
-	fn transcoded_body(&self, exec: &Executors, target: ::ffmpeg::Format)
-		-> Result<std::sync::Arc<Media>> {
-		::ffmpeg::transcode(target, self.ffmpeg_input(exec)?, exec)
+	fn transcoded_body(
+		&self, exec: &Executors,
+		source: &::ffmpeg::Format,
+		target: &::ffmpeg::Format
+	) -> Result<std::sync::Arc<Media>> {
+		::ffmpeg::transcode(source, target, self.ffmpeg_input(exec)?, exec)
 	}
 }
 

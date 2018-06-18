@@ -29,9 +29,16 @@ const SAFE: Device = Device {
 	],
 };
 
+const WEIRD: Device = Device {
+	container: &[ContainerFormat::MOV],
+	video: &[VideoFormat::HVEC],
+	audio: &[AudioFormat::MP3],
+};
+
 const DEVICES: &[Device] = &[
 	CHROMECAST,
 	ALL,
+	WEIRD,
 	SAFE,
 ];
 
@@ -39,6 +46,7 @@ lazy_static! {
 	static ref UA_TO_DEVICE: regex::RegexSet = regex::RegexSet::new(&[
 		" CrKey/",
 		"^VLC/",
+		"^TestWeird/",
 		"",
 	]).unwrap();
 }

@@ -7,6 +7,7 @@ use hyper;
 use percent_encoding;
 use serde;
 use std;
+use smallvec;
 use tokio_core;
 
 use ::Object;
@@ -28,7 +29,10 @@ pub struct ServerArgs<F> {
 
 #[derive(Debug)]
 struct Shared {
-	transcode_cache: std::sync::Mutex<std::collections::HashMap<String,std::sync::Arc<::Media>>>,
+	transcode_cache: std::sync::Mutex<
+		std::collections::HashMap<
+			String,
+			smallvec::SmallVec<[(::ffmpeg::Format, std::sync::Arc<::Media>); 1]>>>,
 }
 
 pub struct ServerFactory<F> {
@@ -173,23 +177,32 @@ impl ServerRef {
 		let device = ::devices::identify(&req.req);
 		
 		let r = item.format(&server.exec)
-			.map(move |f| f.transcode_for(device))
-			.and_then(move |target| match target {
-				Some(t) => {
-					match server.shared.transcode_cache.lock().unwrap().entry(path.clone()) {
-						std::collections::hash_map::Entry::Occupied(e) => {
-							eprintln!("Transcode cache hit!");
-							Ok(e.get().clone())
-						},
-						std::collections::hash_map::Entry::Vacant(e) => {
-							eprintln!("Transcode cache miss!");
-							let media = item.transcoded_body(&server.exec, t)?;
-							e.insert(media.clone());
-							Ok(media)
+			.and_then(move |format| {
+				if format.compatible_with(device) { return item.body(&server.exec) }
+				let mut cache = server.shared.transcode_cache.lock().unwrap();
+				match cache.entry(path.clone()) {
+					std::collections::hash_map::Entry::Occupied(mut e) => {
+						for (ref format, ref media) in e.get_mut().iter_mut() {
+							eprintln!("Transcode available: {:?}", format);
+							if format.compatible_with(device) {
+								eprintln!("Transcode cache hit!");
+								return Ok(media.clone())
+							}
 						}
+						let transcoded_format = format.transcode_for(device);
+						let media = item.transcoded_body(&server.exec, &format, &transcoded_format)?;
+						e.get_mut().push((transcoded_format, media.clone()));
+						Ok(media)
+					}
+					std::collections::hash_map::Entry::Vacant(e) => {
+						eprintln!("Transcode cache miss!");
+						let transcoded_format = format.transcode_for(device);
+						let media = item.transcoded_body(&server.exec, &format, &transcoded_format)?;
+						e.insert(smallvec::SmallVec::from_buf(
+							[(transcoded_format, media.clone())]));
+						Ok(media)
 					}
 				}
-				None => item.body(&server.exec),
 			})
 			.and_then(move |media| {
 				let mut response = hyper::Response::new()
