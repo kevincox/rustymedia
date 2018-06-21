@@ -22,6 +22,7 @@ extern crate tokio_io;
 use error_chain::ChainedError;
 use futures::future::{Executor};
 
+mod cache;
 mod config;
 mod devices;
 pub mod dlna;

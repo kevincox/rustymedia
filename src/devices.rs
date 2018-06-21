@@ -24,8 +24,8 @@ const SAFE: Device = Device {
 	container: &[ContainerFormat::MKV],
 	video: &[VideoFormat::H264],
 	audio: &[
-		AudioFormat::AAC,
 		AudioFormat::MP3,
+		AudioFormat::AAC,
 	],
 };
 

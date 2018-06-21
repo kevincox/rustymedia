@@ -7,7 +7,6 @@ use hyper;
 use percent_encoding;
 use serde;
 use std;
-use smallvec;
 use tokio_core;
 
 use ::Object;
@@ -29,10 +28,7 @@ pub struct ServerArgs<F> {
 
 #[derive(Debug)]
 struct Shared {
-	transcode_cache: std::sync::Mutex<
-		std::collections::HashMap<
-			String,
-			smallvec::SmallVec<[(::ffmpeg::Format, std::sync::Arc<::Media>); 1]>>>,
+	transcode_cache: std::sync::Mutex<::cache::TranscodeCache>,
 }
 
 pub struct ServerFactory<F> {
@@ -52,7 +48,7 @@ impl<F> ServerFactory<F> {
 			remote: args.remote,
 			root: args.root,
 			shared: std::sync::Arc::new(Shared {
-				transcode_cache: std::sync::Mutex::new(std::collections::HashMap::new()),
+				transcode_cache: std::sync::Mutex::new(::cache::TranscodeCache::new()),
 			}),
 			root_xml: format!(include_str!("root.xml"),
 				name=args.name,
@@ -178,31 +174,8 @@ impl ServerRef {
 		
 		let r = item.format(&server.exec)
 			.and_then(move |format| {
-				if format.compatible_with(device) { return item.body(&server.exec) }
 				let mut cache = server.shared.transcode_cache.lock().unwrap();
-				match cache.entry(path.clone()) {
-					std::collections::hash_map::Entry::Occupied(mut e) => {
-						for (ref format, ref media) in e.get_mut().iter_mut() {
-							eprintln!("Transcode available: {:?}", format);
-							if format.compatible_with(device) {
-								eprintln!("Transcode cache hit!");
-								return Ok(media.clone())
-							}
-						}
-						let transcoded_format = format.transcode_for(device);
-						let media = item.transcoded_body(&server.exec, &format, &transcoded_format)?;
-						e.get_mut().push((transcoded_format, media.clone()));
-						Ok(media)
-					}
-					std::collections::hash_map::Entry::Vacant(e) => {
-						eprintln!("Transcode cache miss!");
-						let transcoded_format = format.transcode_for(device);
-						let media = item.transcoded_body(&server.exec, &format, &transcoded_format)?;
-						e.insert(smallvec::SmallVec::from_buf(
-							[(transcoded_format, media.clone())]));
-						Ok(media)
-					}
-				}
+				cache.get(&server.exec, &item, &format, &device)
 			})
 			.and_then(move |media| {
 				let mut response = hyper::Response::new()
