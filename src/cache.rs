@@ -1,3 +1,4 @@
+use lru_cache;
 use smallvec;
 use std;
 
@@ -9,7 +10,7 @@ struct Entry {
 
 #[derive(Debug)]
 pub struct TranscodeCache {
-	values: std::collections::HashMap<
+	values: lru_cache::LruCache<
 		String,
 		smallvec::SmallVec<[Entry; 1]>>,
 }
@@ -17,7 +18,7 @@ pub struct TranscodeCache {
 impl TranscodeCache {
 	pub fn new() -> Self {
 		TranscodeCache {
-			values: std::collections::HashMap::new(),
+			values: lru_cache::LruCache::new(10),
 		}
 	}
 
@@ -30,8 +31,9 @@ impl TranscodeCache {
 	{
 		if format.compatible_with(device) { return item.body(&exec) }
 
+		eprintln!("Cache size: {}", self.values.len());
 		match self.values.entry(item.id().to_owned()) {
-			std::collections::hash_map::Entry::Occupied(mut e) => {
+			lru_cache::Entry::Occupied(mut e) => {
 				for e in e.get_mut().iter_mut() {
 					eprintln!("Transcode available: {:?}", e.format);
 					if e.format.compatible_with(device) {
@@ -44,7 +46,7 @@ impl TranscodeCache {
 				e.get_mut().push(Entry{format: transcoded_format, media: media.clone()});
 				Ok(media)
 			}
-			std::collections::hash_map::Entry::Vacant(e) => {
+			lru_cache::Entry::Vacant(e) => {
 				eprintln!("Transcode cache miss!");
 				let transcoded_format = format.transcode_for(device);
 				let media = item.transcoded_body(exec, &format, &transcoded_format)?;

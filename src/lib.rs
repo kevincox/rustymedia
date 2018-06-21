@@ -6,6 +6,7 @@ extern crate futures_cpupool;
 #[macro_use] extern crate error_chain;
 #[macro_use] extern crate hyper;
 #[macro_use] extern crate lazy_static;
+extern crate lru_cache;
 extern crate nix;
 extern crate os_pipe;
 extern crate percent_encoding;
