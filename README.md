@@ -1,6 +1,6 @@
 # Rustymedia
 
-WARNING: This project is incomplete, it works but don't expect magic. See the issues page for some of the missing features.
+Rustymedia is a media server. It mimics the DLNA protocol and should work with most DLNA clients.
 
 ## Usage
 
@@ -14,6 +14,6 @@ cargo run -- --help
 
 ## Transcoding
 
-The server automatically transcodes to formats that the client supports. Right now only Chromecast and VLC clients are supported.
+The server automatically transcodes to formats that the client supports (if required). Right now only a [couple of clients](src/devices.rs) are recognized. Other clients get a "safe" profile which is likely to work.
 
-Recent transcodes are cached in /tmp.
+Recent transcodes are cached as anonymous files in /tmp, kill the server to clear the cache.
