@@ -14,6 +14,6 @@ cargo run -- --help
 
 ## Transcoding
 
-Right now transcoding is hardcoded to target the 1st gen chromecast. Eventually this will detect the client and transcode appropriately.
+The server automatically transcodes to formats that the client supports. Right now only Chromecast and VLC clients are supported.
 
-The transcodes are cached on the `/tmp` filesystem. Currently they are purged only on exit.
+Recent transcodes are cached in /tmp.
