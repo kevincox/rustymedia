@@ -107,7 +107,7 @@ impl AudioFormat {
 #[derive(Clone,Debug,PartialEq)]
 pub enum VideoFormat {
 	H264,
-	HVEC,
+	HEVC,
 	VP8,
 	Other(String),
 }
@@ -117,7 +117,7 @@ impl VideoFormat {
 		match *self {
 			VideoFormat::H264 =>
 				&["h264", "-preset", "ultrafast", "-bsf:v", "h264_mp4toannexb"],
-			VideoFormat::HVEC =>
+			VideoFormat::HEVC =>
 				&["libx265", "-preset", "ultrafast"],
 			VideoFormat::VP8 => &["vp8"],
 			VideoFormat::Other(ref s) =>
@@ -157,7 +157,7 @@ impl Format {
 	}
 }
 
-#[derive(Debug)]
+#[derive(Debug,PartialEq)]
 pub struct Device {
 	pub container: &'static [ContainerFormat],
 	pub audio: &'static [AudioFormat],
@@ -227,11 +227,12 @@ pub fn format(input: Input, exec: &::Executors) -> ::Future<Format> {
 		for stream in streams.into_iter().rev() {
 			let FfprobeStream{codec_type, codec_name, ..} = stream;
 			
+			println!("{} {}", codec_type, codec_name);
 			match (codec_type.as_ref(), codec_name.as_ref()) {
 				("video", "h264") =>
 					format.video = Some(VideoFormat::H264),
-				("video", "hvec") =>
-					format.video = Some(VideoFormat::HVEC),
+				("video", "hevc") =>
+					format.video = Some(VideoFormat::HEVC),
 				("video", codec) =>
 					format.video = Some(VideoFormat::Other(codec.to_string())),
 				("audio", "aac") =>
