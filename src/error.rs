@@ -17,7 +17,6 @@ error_chain!{
 		Io(::std::io::Error);
 		Json(::serde_json::Error);
 		KXml(::xml::Error);
-		Nix(::nix::Error);
 		Utf8Error(::std::str::Utf8Error);
 		Xml(::serde_xml_rs::Error);
 	}

@@ -1,13 +1,12 @@
 use futures;
 use futures::stream::Stream;
-use nix;
 use os_pipe::IntoStdio;
 use os_pipe;
 use serde_json;
 use std;
 use std::io::{Write};
 use std::os::unix::fs::FileExt;
-use std::os::unix::io::FromRawFd;
+use tempfile;
 
 use error::ResultExt;
 
@@ -345,12 +344,8 @@ impl futures::Stream for MediaStream {
 
 pub fn transcode(source: &Format, target: &Format, input: Input, exec: &::Executors)
 	-> ::Result<std::sync::Arc<::Media>> {
-	let fd = nix::fcntl::open(
-		"/tmp",
-		{ use nix::fcntl::*; O_APPEND | O_CLOEXEC | O_TMPFILE | O_RDWR },
-		{ use nix::sys::stat::*; S_IRUSR | S_IWUSR })?;
-	let file = unsafe { std::fs::File::from_raw_fd(fd) };
-	
+	let file = tempfile::tempfile().expect("Error opening tempfile");
+
 	let mut cmd = start_ffmpeg();
 	// cmd.stderr(std::process::Stdio::null());
 	add_input(input, exec, &mut cmd)?;
