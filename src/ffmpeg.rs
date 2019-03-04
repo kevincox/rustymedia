@@ -33,6 +33,7 @@ pub enum Input<'a> {
 }
 
 fn add_input(input: Input, exec: &::Executors, cmd: &mut std::process::Command) -> ::Result<()> {
+
 	match input {
 		Input::Uri(uri) => { cmd.arg("-i").arg(uri); }
 		Input::Stream(content) => {
@@ -196,16 +197,26 @@ pub fn format(input: Input, exec: &::Executors) -> ::Future<Format> {
 	
 	// eprintln!("Executing: {:?}", cmd);
 	
-	let child = match cmd.spawn().chain_err(|| "Error executing ffprobe") {
+	let mut child = match cmd.spawn().chain_err(|| "Error executing ffprobe") {
 		Ok(child) => child,
 		Err(e) => return Box::new(futures::future::err(e))
 	};
 	
 	Box::new(futures::future::lazy(move || {
+		let out = serde_json::from_reader(child.stdout.take().unwrap())
+			.chain_err(|| format!("Error parsing output of: {:?}", cmd));
+
+		let out = match child.try_wait()? {
+			Some(status) if !status.success() => {
+				out.chain_err(|| format!("ffprobe exited: {:?}", status))
+			}
+			_ => out,
+		};
+
 		let Ffprobe{
 			format: FfprobeFormat{format_name},
 			streams,
-		} = serde_json::from_reader(child.stdout.unwrap())?;
+		} = out?;
 		
 		let container = match format_name.as_ref() {
 			"matroska" | "matroska,webm" => ContainerFormat::MKV,
