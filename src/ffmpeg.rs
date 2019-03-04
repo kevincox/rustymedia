@@ -33,6 +33,7 @@ pub enum Input<'a> {
 }
 
 fn add_input(input: Input, exec: &::Executors, cmd: &mut std::process::Command) -> ::Result<()> {
+	cmd.args(&["-err_detect", "ignore_err"]);
 
 	match input {
 		Input::Uri(uri) => { cmd.arg("-i").arg(uri); }
