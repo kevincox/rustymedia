@@ -189,7 +189,7 @@ impl<'a> Iterator for ChunkIter<'a> {
 					.map(|i| self.0.split_at(i))
 					.unwrap_or((self.0, ""));
 				self.0 = tail;
-				Chunk(head.trim_left_matches('0'))
+				Chunk(head.trim_start_matches('0'))
 			})
 	}
 }
