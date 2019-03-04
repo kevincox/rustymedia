@@ -2,6 +2,7 @@ use std::io::Write;
 use serde;
 use std;
 
+#[allow(deprecated)]
 mod error {
 	use serde;
 	use std;

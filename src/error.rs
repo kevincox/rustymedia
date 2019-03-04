@@ -1,3 +1,5 @@
+#![allow(deprecated)]
+
 use futures;
 use std;
 
