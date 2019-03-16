@@ -9,9 +9,9 @@ use serde;
 use std;
 use tokio_core;
 
-use ::Object;
-use dlna;
-use error::{ResultExt};
+use crate::Object;
+use crate::dlna;
+use crate::error::{ResultExt};
 
 const CONNECTION_XML: &str = include_str!("connection.xml");
 const CONTENT_XML: &str = include_str!("content.xml");
@@ -21,20 +21,20 @@ header! { (Soapaction, "Soapaction") => [String] }
 pub struct ServerArgs<F> {
 	pub uri: String,
 	pub remote: F,
-	pub root: std::sync::Arc<::root::Root>,
+	pub root: std::sync::Arc<crate::root::Root>,
 	pub name: String,
 	pub uuid: String,
 }
 
 #[derive(Debug)]
 struct Shared {
-	transcode_cache: std::sync::Mutex<::cache::TranscodeCache>,
+	transcode_cache: std::sync::Mutex<crate::cache::TranscodeCache>,
 }
 
 pub struct ServerFactory<F> {
 	uri: String,
 	remote: F,
-	root: std::sync::Arc<::root::Root>,
+	root: std::sync::Arc<crate::root::Root>,
 	shared: std::sync::Arc<Shared>,
 	root_xml: bytes::Bytes,
 	
@@ -48,7 +48,7 @@ impl<F> ServerFactory<F> {
 			remote: args.remote,
 			root: args.root,
 			shared: std::sync::Arc::new(Shared {
-				transcode_cache: std::sync::Mutex::new(::cache::TranscodeCache::new()),
+				transcode_cache: std::sync::Mutex::new(crate::cache::TranscodeCache::new()),
 			}),
 			root_xml: format!(include_str!("root.xml"),
 				name=args.name,
@@ -74,11 +74,11 @@ impl<F: Fn() -> tokio_core::reactor::Remote> hyper::server::NewService for Serve
 #[derive(Debug)]
 pub struct Server {
 	uri: String,
-	root: std::sync::Arc<::root::Root>,
+	root: std::sync::Arc<crate::root::Root>,
 	shared: std::sync::Arc<Shared>,
 	root_xml: bytes::Bytes,
 	
-	exec: ::Executors,
+	exec: crate::Executors,
 }
 
 impl Server {
@@ -91,7 +91,7 @@ impl Server {
 			root: factory.root.clone(),
 			shared: factory.shared.clone(),
 			root_xml: factory.root_xml.clone(),
-			exec: ::Executors {
+			exec: crate::Executors {
 				handle: (factory.remote)().handle().unwrap(),
 				cpupool: factory.cpupool.clone(),
 			},
@@ -206,7 +206,7 @@ impl ServerRef {
 		let server = self.0.clone();
 		let server2 = self.0.clone();
 
-		let device = ::devices::identify(&req.req);
+		let device = crate::devices::identify(&req.req);
 		
 		let r = item.format(&server.exec)
 			.and_then(move |format| {
@@ -285,7 +285,7 @@ impl ServerRef {
 		Box::new(r)
 	}
 	
-	fn call_dlna_browse(self, body: dlna::types::Body) -> ::Result<hyper::Response> {
+	fn call_dlna_browse(self, body: dlna::types::Body) -> crate::Result<hyper::Response> {
 		let object = self.0.root.lookup(&body.browse.object_id)?;
 		
 		let mut containers = Vec::new();
@@ -294,15 +294,15 @@ impl ServerRef {
 
 		for entry in object.children()? {
 			match entry.file_type() {
-				::Type::Directory => containers.push(entry),
-				::Type::Image | ::Type::Subtitles => support.push(entry),
-				::Type::Video => items.push(entry),
-				::Type::Other => continue,
+				crate::Type::Directory => containers.push(entry),
+				crate::Type::Image | crate::Type::Subtitles => support.push(entry),
+				crate::Type::Video => items.push(entry),
+				crate::Type::Other => continue,
 			}
 		}
 
-		items.sort_by(|l, r| ::human_order(l.id(), r.id()));
-		support.sort_by(|l, r| ::human_order(l.id(), r.id()));
+		items.sort_by(|l, r| crate::human_order(l.id(), r.id()));
+		support.sort_by(|l, r| crate::human_order(l.id(), r.id()));
 
 		respond_soap(dlna::types::BodyBrowseResponse {
 			browse_response: dlna::types::BrowseResponse {
@@ -320,7 +320,7 @@ impl ServerRef {
 							title: entry.title(),
 							restricted: true,
 							class: entry.dlna_class(),
-							_start_body: ::xml::Body(()),
+							_start_body: crate::xml::Body(()),
 						}
 					}).collect(),
 					items: items.into_iter().map(|entry| {
@@ -338,7 +338,7 @@ impl ServerRef {
 							res: vec![
 								dlna::types::Res {
 									protocol_info: "http-get:*:video/x-matroska:*".to_string(),
-									uri: ::xml::Body(url),
+									uri: crate::xml::Body(url),
 								},
 							],
 						};
@@ -357,18 +357,18 @@ impl ServerRef {
 								percent_encoding::DEFAULT_ENCODE_SET);
 
 							match support.file_type() {
-								::Type::Image => {
+								crate::Type::Image => {
 									item.res.push(dlna::types::Res {
 										protocol_info: "http-get:*:image/jpeg:*".to_string(),
-										uri: ::xml::Body(format!("{}/files/{}", self.0.uri, path)),
+										uri: crate::xml::Body(format!("{}/files/{}", self.0.uri, path)),
 									});
 								}
-								::Type::Subtitles => {
+								crate::Type::Subtitles => {
 								}
 
-								::Type::Directory => unreachable!(),
-								::Type::Video => unreachable!(),
-								::Type::Other => unreachable!(),
+								crate::Type::Directory => unreachable!(),
+								crate::Type::Video => unreachable!(),
+								crate::Type::Other => unreachable!(),
 							}
 						}
 
@@ -384,16 +384,16 @@ fn respond_ok(res: hyper::Response) -> BoxedResponse {
 	Box::new(futures::future::ok(res))
 }
 
-fn respond_err(e: ::error::Error) -> BoxedResponse {
+fn respond_err(e: crate::error::Error) -> BoxedResponse {
 	Box::new(futures::future::err(e))
 }
 
 fn respond_soap<T: serde::Serialize + std::fmt::Debug>
-	(body: T) -> ::error::Result<hyper::Response>
+	(body: T) -> crate::error::Result<hyper::Response>
 {
 	eprintln!("Responding with: {:#?}", body);
 	let mut buf = Vec::new();
-	::xml::serialize(&mut buf, dlna::types::Envelope{body})
+	crate::xml::serialize(&mut buf, dlna::types::Envelope{body})
 		.chain_err(|| "Error serializing XML.")?;
 	// eprintln!("Emitting xml: {}", String::from_utf8_lossy(&buf));
 	Ok(hyper::Response::new()
@@ -428,7 +428,7 @@ fn call_method_not_allowed(req: dlna::Request) -> BoxedResponse {
 			.with_status(hyper::StatusCode::MethodNotAllowed))
 }
 
-type BoxedResponse = Box<futures::Future<Item = hyper::Response, Error = ::error::Error>>;
+type BoxedResponse = Box<futures::Future<Item = hyper::Response, Error = crate::error::Error>>;
 
 #[derive(Clone,Debug)]
 pub struct ServerRef(std::sync::Arc<Server>);

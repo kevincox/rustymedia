@@ -24,7 +24,7 @@ mod error {
 		}
 	}
 }
-pub use xml::error::{Error, ErrorKind, Result};
+pub use crate::xml::error::{Error, ErrorKind, Result};
 
 #[derive(Debug,Serialize)]
 #[serde(rename="||KXML body node||")]

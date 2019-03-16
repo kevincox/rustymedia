@@ -2,8 +2,8 @@ use futures::{Future, IntoFuture, Stream};
 use std;
 use tokio_core;
 
-use dlna;
-use error::ResultExt;
+use crate::dlna;
+use crate::error::ResultExt;
 
 pub fn schedule_presence_broadcasts(
 	handle: tokio_core::reactor::Handle,
@@ -42,7 +42,7 @@ pub fn schedule_presence_broadcasts(
 			.chain_err(|| format!("Error sending {}", desc))
 	};
 	
-	let broadcast_presence = move || -> ::error::Result<()> {
+	let broadcast_presence = move || -> crate::error::Result<()> {
 		// eprintln!("Broadcasting presence.");
 		// eprintln!("{}", String::from_utf8_lossy(&msg_uuid));
 		
@@ -64,7 +64,7 @@ pub fn schedule_presence_broadcasts(
 		&handle).unwrap()
 		.for_each(move |_|
 			broadcast_presence()
-				.or_else(|e: ::error::Error| {
+				.or_else(|e: crate::error::Error| {
 					eprintln!("Error broadcasting presence: {:?}", e);
 					Ok(())
 				})

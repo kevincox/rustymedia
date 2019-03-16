@@ -9,7 +9,7 @@ use std::io::{Write};
 use std::os::unix::fs::FileExt;
 use std::os::unix::io::FromRawFd;
 
-use error::ResultExt;
+use crate::error::ResultExt;
 
 fn start_cmd(cmd: &'static str) -> std::process::Command {
 	let mut cmd = std::process::Command::new(cmd);
@@ -18,21 +18,21 @@ fn start_cmd(cmd: &'static str) -> std::process::Command {
 }
 
 fn start_ffmpeg() -> std::process::Command {
-	let mut cmd = start_cmd(::config::FFMPEG_BINARY());
+	let mut cmd = start_cmd(crate::config::FFMPEG_BINARY());
 	cmd.arg("-nostdin");
 	cmd
 }
 
 fn start_ffprobe() -> std::process::Command {
-	start_cmd(::config::FFPROBE_BINARY())
+	start_cmd(crate::config::FFPROBE_BINARY())
 }
 
 pub enum Input<'a> {
 	Uri(&'a std::path::Path),
-	Stream(::ByteStream),
+	Stream(crate::ByteStream),
 }
 
-fn add_input(input: Input, exec: &::Executors, cmd: &mut std::process::Command) -> ::Result<()> {
+fn add_input(input: Input, exec: &crate::Executors, cmd: &mut std::process::Command) -> crate::Result<()> {
 	cmd.args(&["-err_detect", "ignore_err"]);
 
 	match input {
@@ -183,7 +183,7 @@ struct FfprobeStream {
 	codec_name: String,
 }
 
-pub fn format(input: Input, exec: &::Executors) -> ::Future<Format> {
+pub fn format(input: Input, exec: &crate::Executors) -> crate::Future<Format> {
 	let mut cmd = start_ffprobe();
 	if let Err(e) = add_input(input, exec, &mut cmd) {
 		return Box::new(futures::future::err(e))
@@ -279,16 +279,16 @@ struct MediaProgress {
 	blocked: Vec<futures::task::Task>,
 }
 
-impl ::Media for Media {
-	fn size(&self) -> ::MediaSize {
+impl crate::Media for Media {
+	fn size(&self) -> crate::MediaSize {
 		let progress = self.file.progress.lock().unwrap();
-		::MediaSize {
+		crate::MediaSize {
 			available: progress.size,
 			total: if progress.complete { Some(progress.size) } else { None },
 		}
 	}
 	
-	fn read_range(&self, start: u64, end: u64) -> ::ByteStream {
+	fn read_range(&self, start: u64, end: u64) -> crate::ByteStream {
 		Box::new(MediaStream{file: self.file.clone(), offset: start, end: end})
 	}
 }
@@ -300,7 +300,7 @@ struct MediaStream {
 }
 
 impl MediaStream {
-	fn read(&mut self, buf: &mut Vec<u8>) -> ::Result<i64> {
+	fn read(&mut self, buf: &mut Vec<u8>) -> crate::Result<i64> {
 		let len = self.file.file.read_at(buf, self.offset)
 			.chain_err(|| "Error reading in follower.")?;
 		// eprintln!("STREAM read {}-{} size {}", self.offset, self.offset+len as u64, len);
@@ -311,10 +311,10 @@ impl MediaStream {
 
 impl futures::Stream for MediaStream {
 	type Item = Vec<u8>;
-	type Error = ::Error;
+	type Error = crate::Error;
 	
-	fn poll(&mut self) -> futures::Poll<Option<Self::Item>, ::Error> {
-		let buf_size = ::CHUNK_SIZE.min((self.end - self.offset) as usize);
+	fn poll(&mut self) -> futures::Poll<Option<Self::Item>, crate::Error> {
+		let buf_size = crate::CHUNK_SIZE.min((self.end - self.offset) as usize);
 		if buf_size == 0 { return Ok(futures::Async::Ready(None)) }
 		
 		let mut buf = Vec::with_capacity(buf_size);
@@ -335,7 +335,7 @@ impl futures::Stream for MediaStream {
 					unsafe { buf.set_len(buf_size); }
 					let len = self.read(&mut buf)?;
 					if len != 0 {
-						return Err(::ErrorKind::Other(
+						return Err(crate::ErrorKind::Other(
 							"Read EOF when expecting content".to_string()).into())
 					}
 					return Ok(futures::Async::Ready(Some(buf)))
@@ -355,8 +355,8 @@ impl futures::Stream for MediaStream {
 	}
 }
 
-pub fn transcode(source: &Format, target: &Format, input: Input, exec: &::Executors)
-	-> ::Result<std::sync::Arc<::Media>> {
+pub fn transcode(source: &Format, target: &Format, input: Input, exec: &crate::Executors)
+	-> crate::Result<std::sync::Arc<crate::Media>> {
 	let fd = nix::fcntl::open(
 		"/tmp",
 		{ use nix::fcntl::*; O_APPEND | O_CLOEXEC | O_TMPFILE | O_RDWR },

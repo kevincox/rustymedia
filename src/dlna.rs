@@ -5,7 +5,7 @@ use serde;
 use serde_xml_rs;
 use std;
 
-use error::ResultExt;
+use crate::error::ResultExt;
 
 pub mod discovery;
 pub mod server;
@@ -29,7 +29,7 @@ impl Request {
 	
 	fn path(&self) -> &str { &self.req.path()[self.path_offset..] }
 	
-	fn decoded_path(&self) -> ::Result<String> {
+	fn decoded_path(&self) -> crate::Result<String> {
 		percent_encoding::percent_decode(self.path().as_bytes())
 			.decode_utf8()
 			.chain_err(|| "Error percent-decoding path to utf8")
@@ -54,26 +54,26 @@ impl Request {
 		return next_chunk
 	}
 	
-	fn body_vec(self) -> Box<Future<Item=Vec<u8>, Error=::error::Error>> {
+	fn body_vec(self) -> Box<Future<Item=Vec<u8>, Error=crate::error::Error>> {
 		Box::new(self.req.body()
 			.then(|r| r.chain_err(|| "Parsing request body."))
 			.fold(Vec::new(), |mut v, chunk| {
 				v.extend(chunk);
-				Ok::<_,::error::Error>(v)
+				Ok::<_,crate::error::Error>(v)
 			}))
 	}
 	
-	fn body_str_lossy(self) -> Box<Future<Item=String, Error=::error::Error>> {
+	fn body_str_lossy(self) -> Box<Future<Item=String, Error=crate::error::Error>> {
 		Box::new(self.req.body()
 			.then(|r| r.chain_err(|| "Parsing request body."))
 			.fold(String::new(), |mut s, chunk| {
 				s += &String::from_utf8_lossy(&chunk);
-				Ok::<_,::error::Error>(s)
+				Ok::<_,crate::error::Error>(s)
 			}))
 	}
 	
 	fn to_xml<B: 'static + serde::Deserialize<'static> + std::fmt::Debug>(self)
-		-> Box<Future<Item=types::Envelope<B>, Error=::error::Error>>
+		-> Box<Future<Item=types::Envelope<B>, Error=crate::error::Error>>
 	{
 		Box::new(self.body_vec()
 			.and_then(|v| {

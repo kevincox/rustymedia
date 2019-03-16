@@ -33,7 +33,7 @@ pub mod local;
 pub mod root;
 mod xml;
 
-pub use error::{Error,ErrorKind,Result};
+pub use crate::error::{Error,ErrorKind,Result};
 
 pub type Future<T> = Box<futures::Future<Item=T, Error=Error> + Send>;
 pub type ByteStream = Box<futures::Stream<Item=Vec<u8>, Error=Error> + Send>;
@@ -119,16 +119,16 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 
 	fn children(&self) -> Result<Vec<Box<Object>>>;
 
-	fn ffmpeg_input(&self, exec: &Executors) -> Result<::ffmpeg::Input> {
-		Ok(::ffmpeg::Input::Stream(self.body(exec)?.read_all()))
+	fn ffmpeg_input(&self, exec: &Executors) -> Result<crate::ffmpeg::Input> {
+		Ok(crate::ffmpeg::Input::Stream(self.body(exec)?.read_all()))
 	}
 
-	fn format(&self, exec: &Executors) -> Future<::ffmpeg::Format> {
+	fn format(&self, exec: &Executors) -> Future<crate::ffmpeg::Format> {
 		let ffmpeg_input = match self.ffmpeg_input(exec) {
 			Ok(input) => input,
 			Err(e) => return Box::new(futures::future::err(e)),
 		};
-		::ffmpeg::format(ffmpeg_input, exec)
+		crate::ffmpeg::format(ffmpeg_input, exec)
 	}
 
 	fn body(&self, _exec: &Executors) -> Result<std::sync::Arc<Media>> {
@@ -137,10 +137,10 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 
 	fn transcoded_body(
 		&self, exec: &Executors,
-		source: &::ffmpeg::Format,
-		target: &::ffmpeg::Format
+		source: &crate::ffmpeg::Format,
+		target: &crate::ffmpeg::Format
 	) -> Result<std::sync::Arc<Media>> {
-		::ffmpeg::transcode(source, target, self.ffmpeg_input(exec)?, exec)
+		crate::ffmpeg::transcode(source, target, self.ffmpeg_input(exec)?, exec)
 	}
 }
 

@@ -61,7 +61,7 @@ impl serde::Serialize for Result {
 		-> std::result::Result<S::Ok, S::Error>
 	{
 		let mut buf = Vec::new();
-		if let Err(e) = ::xml::serialize(&mut buf, &self.0) {
+		if let Err(e) = crate::xml::serialize(&mut buf, &self.0) {
 			return Err(S::Error::custom(format!("{:?}", e)))
 		}
 		let s = String::from_utf8(buf).unwrap();
@@ -90,7 +90,7 @@ pub struct Container {
 	pub parent_id: String,
 	pub restricted: bool,
 	
-	pub _start_body: ::xml::Body<()>,
+	pub _start_body: crate::xml::Body<()>,
 	#[serde(rename="dc:title")]
 	pub title: String,
 	#[serde(rename="upnp:class")]
@@ -125,12 +125,12 @@ pub struct Res {
 	// pub resolution: String,
 	
 	pub protocol_info: String,
-	pub uri: ::xml::Body<String>,
+	pub uri: crate::xml::Body<String>,
 }
 
 #[derive(Debug,Serialize)]
 pub struct AlbumArtUri {
 	#[serde(rename="profileID")]
 	pub profile_id: String,
-	pub uri: ::xml::Body<String>,
+	pub uri: crate::xml::Body<String>,
 }

@@ -5,7 +5,7 @@ use std::io::{Read, Seek};
 use std::sync::Arc;
 use std::os::unix::ffi::{OsStrExt, OsStringExt};
 
-use error::{ResultExt};
+use crate::error::{ResultExt};
 
 #[derive(Debug)]
 pub struct Root {
@@ -21,7 +21,7 @@ pub struct Object {
 }
 
 impl Object {
-	pub fn new(root: Arc<Root>, path: std::path::PathBuf) -> ::Result<Object> {
+	pub fn new(root: Arc<Root>, path: std::path::PathBuf) -> crate::Result<Object> {
 		let relpath = &path_remove_prefix(&path, &root.path);
 		let relpath = relpath.to_string_lossy();
 		let id = format!("{}{}", root.title, relpath);
@@ -32,13 +32,13 @@ impl Object {
 		})
 	}
 	
-	pub fn new_boxed(root: Arc<Root>, path: std::path::PathBuf) -> ::Result<Box<::Object>> {
+	pub fn new_boxed(root: Arc<Root>, path: std::path::PathBuf) -> crate::Result<Box<crate::Object>> {
 		let r = Self::new(root, path)?;
 		Ok(Box::new(r))
 	}
 	
 	pub fn new_root<P: Into<std::path::PathBuf>>
-		(name: String, path: P) -> ::Result<Object>
+		(name: String, path: P) -> crate::Result<Object>
 	{
 		let path = path.into();
 		let root = Arc::new(Root {
@@ -54,7 +54,7 @@ impl Object {
 	}
 }
 
-impl ::Object for Object {
+impl crate::Object for Object {
 	fn id(&self) -> &str { &self.id }
 	fn parent_id(&self) -> &str {
 		match self.id.rfind('/') {
@@ -66,19 +66,19 @@ impl ::Object for Object {
 		}
 	}
 	
-	fn file_type(&self) -> ::Type {
-		if self.is_dir() { return ::Type::Directory }
+	fn file_type(&self) -> crate::Type {
+		if self.is_dir() { return crate::Type::Directory }
 		
 		match self.path.extension().and_then(std::ffi::OsStr::to_str) {
-			Some("avi") => ::Type::Video,
-			Some("jpeg") => ::Type::Image,
-			Some("jpg") => ::Type::Image,
-			Some("m4v") => ::Type::Video,
-			Some("mkv") => ::Type::Video,
-			Some("mp4") => ::Type::Video,
-			Some("png") => ::Type::Image,
-			Some("srt") => ::Type::Subtitles,
-			_ => ::Type::Other,
+			Some("avi") => crate::Type::Video,
+			Some("jpeg") => crate::Type::Image,
+			Some("jpg") => crate::Type::Image,
+			Some("m4v") => crate::Type::Video,
+			Some("mkv") => crate::Type::Video,
+			Some("mp4") => crate::Type::Video,
+			Some("png") => crate::Type::Image,
+			Some("srt") => crate::Type::Subtitles,
+			_ => crate::Type::Other,
 		}
 	}
 	
@@ -90,7 +90,7 @@ impl ::Object for Object {
 	
 	fn is_dir(&self) -> bool { self.path.is_dir() }
 	
-	fn lookup(&self, id: &str) -> ::Result<Box<::Object>> {
+	fn lookup(&self, id: &str) -> crate::Result<Box<crate::Object>> {
 		debug_assert_eq!(self.path, self.root.path);
 		
 		let mut base = self.path.clone();
@@ -105,7 +105,7 @@ impl ::Object for Object {
 		Self::new_boxed(self.root.clone(), base)
 	}
 	
-	fn children(&self) -> ::error::Result<Vec<Box<::Object>>> {
+	fn children(&self) -> crate::error::Result<Vec<Box<crate::Object>>> {
 		self.path.read_dir()
 			.chain_err(|| "Getting children of local directory.")?
 			.map(|result| result
@@ -116,11 +116,11 @@ impl ::Object for Object {
 			.collect()
 	}
 	
-	fn ffmpeg_input(&self, _exec: &::Executors) -> ::Result<::ffmpeg::Input> {
-		Ok(::ffmpeg::Input::Uri(&self.path))
+	fn ffmpeg_input(&self, _exec: &crate::Executors) -> crate::Result<crate::ffmpeg::Input> {
+		Ok(crate::ffmpeg::Input::Uri(&self.path))
 	}
 	
-	fn body(&self, _exec: &::Executors) -> ::Result<std::sync::Arc<::Media>> {
+	fn body(&self, _exec: &crate::Executors) -> crate::Result<std::sync::Arc<crate::Media>> {
 		Ok(std::sync::Arc::new(Media{path: self.path.clone()}))
 	}
 }
@@ -130,28 +130,28 @@ struct Media {
 	path: std::path::PathBuf,
 }
 
-impl ::Media for Media {
-	fn size(&self) -> ::MediaSize {
+impl crate::Media for Media {
+	fn size(&self) -> crate::MediaSize {
 		let s = self.path.metadata().map(|m| m.len()).unwrap_or(0);
-		::MediaSize {
+		crate::MediaSize {
 			available: s,
 			total: Some(s),
 		}
 	}
 	
-	fn read_range(&self, start: u64, end: u64) -> ::ByteStream {
+	fn read_range(&self, start: u64, end: u64) -> crate::ByteStream {
 		let mut file = match std::fs::File::open(&self.path) {
 			Ok(f) => f,
 			Err(e) => {
-				let e = ::Error::with_chain(e, format!("Error opening {:?}", self.path));
+				let e = crate::Error::with_chain(e, format!("Error opening {:?}", self.path));
 				return Box::new(futures::future::err(e).into_stream())
 			}
 		};
 		if let Err(e) = file.seek(std::io::SeekFrom::Start(start)) {
-			let e = ::Error::with_chain(e, format!("Error seeking {:?}", self.path));
+			let e = crate::Error::with_chain(e, format!("Error seeking {:?}", self.path));
 			return Box::new(futures::future::err(e).into_stream())
 		}
-		Box::new(::ReadStream(file.take(end)))
+		Box::new(crate::ReadStream(file.take(end)))
 	}
 }
 
