@@ -92,6 +92,16 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 	fn parent_id(&self) -> &str;
 	fn file_type(&self) -> Type;
 
+	fn prefix(&self) -> &str {
+		let mut prefix = self.id();
+		if let Some(i) = prefix.rfind('.') {
+			if !prefix[i..].contains('/') {
+				prefix = &prefix[..i];
+			}
+		}
+		prefix
+	}
+
 	fn dlna_class(&self) -> &'static str {
 		match self.file_type() {
 			Type::Directory => "object.container.storageFolder",
@@ -108,20 +118,6 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 	fn lookup(&self, id: &str) -> Result<Box<Object>>;
 
 	fn children(&self) -> Result<Vec<Box<Object>>>;
-
-	fn relevant_children(&self) -> Result<Vec<Box<Object>>> {
-		let mut children = self.children()?;
-		children.retain(|c| match c.file_type() {
-			Type::Directory => true,
-			Type::Subtitles => true,
-			Type::Video => true,
-
-			Type::Image => false,
-			Type::Other => false,
-		});
-		children.sort_by(|l, r| human_order(l.id(), r.id()));
-		Ok(children)
-	}
 
 	fn ffmpeg_input(&self, exec: &Executors) -> Result<::ffmpeg::Input> {
 		Ok(::ffmpeg::Input::Stream(self.body(exec)?.read_all()))

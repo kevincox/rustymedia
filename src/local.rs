@@ -71,9 +71,12 @@ impl ::Object for Object {
 		
 		match self.path.extension().and_then(std::ffi::OsStr::to_str) {
 			Some("avi") => ::Type::Video,
+			Some("jpeg") => ::Type::Image,
+			Some("jpg") => ::Type::Image,
+			Some("m4v") => ::Type::Video,
 			Some("mkv") => ::Type::Video,
 			Some("mp4") => ::Type::Video,
-			Some("m4v") => ::Type::Video,
+			Some("png") => ::Type::Image,
 			Some("srt") => ::Type::Subtitles,
 			_ => ::Type::Other,
 		}

@@ -114,6 +114,7 @@ impl ServerRef {
 			}
 			"connection" => self.call_connection(req),
 			"content" => self.call_content(req),
+			"files" => self.call_files(req),
 			"video" => self.call_video(req),
 			_ => call_not_found(req),
 		}
@@ -155,6 +156,41 @@ impl ServerRef {
 			}
 			other => respond_soap_fault(&format!("Unknown action {:?}", other)),
 		}
+	}
+	
+	fn call_files(&self, req: dlna::Request) -> BoxedResponse {
+		let path = match req.decoded_path() {
+			Ok(p) => p,
+			Err(e) => return respond_err(e),
+		};
+		let item = match self.0.root.lookup(&path) {
+			Ok(path) => path,
+			Err(e) => return respond_err(e),
+		};
+		
+		let server = self.0.clone();
+		
+		let r = item.body(&server.exec)
+			.and_then(move |media| {
+				let mut response = hyper::Response::new()
+					.with_header(hyper::header::ContentType::octet_stream());
+
+				let content = media.read_all()
+					.map(|c| Ok(c.into()))
+					.map_err(|e| e.into());
+				
+				let (sender, body) = hyper::Body::pair();
+				server.exec.spawn(
+					sender.send_all(content)
+						.map(|_| ())
+						.then(|r| r.chain_err(|| "Error sending body.")))?;
+				
+				eprintln!("Response: {:?}", response);
+				response.set_body(body);
+				Ok(response)
+			});
+		
+		Box::new(futures::future::result(r))
 	}
 	
 	fn call_video(&self, req: dlna::Request) -> BoxedResponse {
@@ -254,35 +290,20 @@ impl ServerRef {
 		
 		let mut containers = Vec::new();
 		let mut items = Vec::new();
-		for entry in object.relevant_children()?.iter() {
-			let urlid = percent_encoding::percent_encode(
-				entry.id().as_bytes(),
-				percent_encoding::PATH_SEGMENT_ENCODE_SET);
-			match entry.is_dir() {
-				true => containers.push(dlna::types::Container {
-					parent_id: entry.parent_id().to_string(),
-					id: entry.id().to_string(),
-					title: entry.title(),
-					restricted: true,
-					class: entry.dlna_class(),
-					_start_body: ::xml::Body(()),
-				}),
-				false => items.push(dlna::types::Item {
-					parent_id: entry.parent_id().to_string(),
-					id: entry.id().to_string(),
-					title: entry.title(),
-					restricted: true,
-					class: entry.dlna_class(),
-					res: vec![
-						dlna::types::Res {
-							protocol_info: "http-get:*:video/x-matroska:*".to_string(),
-							uri: ::xml::Body(format!("{}/video/{}", self.0.uri, urlid)),
-						},
-					],
-				}),
+		let mut support = Vec::new();
+
+		for entry in object.children()? {
+			match entry.file_type() {
+				::Type::Directory => containers.push(entry),
+				::Type::Image | ::Type::Subtitles => support.push(entry),
+				::Type::Video => items.push(entry),
+				::Type::Other => continue,
 			}
 		}
-		
+
+		items.sort_by(|l, r| ::human_order(l.id(), r.id()));
+		support.sort_by(|l, r| ::human_order(l.id(), r.id()));
+
 		respond_soap(dlna::types::BodyBrowseResponse {
 			browse_response: dlna::types::BrowseResponse {
 				number_returned: 1,
@@ -292,8 +313,67 @@ impl ServerRef {
 					xmlns: "urn:schemas-upnp-org:metadata-1-0/DIDL-Lite/",
 					xmlns_dc: "http://purl.org/dc/elements/1.1/",
 					xmlns_upnp: "urn:schemas-upnp-org:metadata-1-0/upnp/",
-					containers: containers,
-					items: items,
+					containers: containers.into_iter().map(|entry| {
+						dlna::types::Container {
+							parent_id: entry.parent_id().to_string(),
+							id: entry.id().to_string(),
+							title: entry.title(),
+							restricted: true,
+							class: entry.dlna_class(),
+							_start_body: ::xml::Body(()),
+						}
+					}).collect(),
+					items: items.into_iter().map(|entry| {
+						let path = percent_encoding::percent_encode(
+							entry.id().as_bytes(),
+							percent_encoding::DEFAULT_ENCODE_SET);
+						let url = format!("{}/video/{}", self.0.uri, path);
+
+						let mut item = dlna::types::Item {
+							parent_id: entry.parent_id().to_string(),
+							id: entry.id().to_string(),
+							title: entry.title(),
+							restricted: true,
+							class: entry.dlna_class(),
+							res: vec![
+								dlna::types::Res {
+									protocol_info: "http-get:*:video/x-matroska:*".to_string(),
+									uri: ::xml::Body(url),
+								},
+							],
+						};
+
+						let prefix = entry.prefix();
+						let start = support
+							.binary_search_by_key(&prefix, |e| e.id())
+							.unwrap_or_else(|e| e);
+						for support in &support[start..] {
+							if !support.id().starts_with(prefix) {
+								break
+							}
+
+							let path = percent_encoding::percent_encode(
+								support.id().as_bytes(),
+								percent_encoding::DEFAULT_ENCODE_SET);
+
+							match support.file_type() {
+								::Type::Image => {
+									item.res.push(dlna::types::Res {
+										protocol_info: "http-get:*:image/jpeg:*".to_string(),
+										uri: ::xml::Body(format!("{}/files/{}", self.0.uri, path)),
+									});
+								}
+								::Type::Subtitles => {
+								}
+
+								::Type::Directory => unreachable!(),
+								::Type::Video => unreachable!(),
+								::Type::Other => unreachable!(),
+							}
+						}
+
+						item
+					}).collect(),
 				}),
 			},
 		})
@@ -311,7 +391,7 @@ fn respond_err(e: ::error::Error) -> BoxedResponse {
 fn respond_soap<T: serde::Serialize + std::fmt::Debug>
 	(body: T) -> ::error::Result<hyper::Response>
 {
-	// eprintln!("Responding with: {:#?}", body);
+	eprintln!("Responding with: {:#?}", body);
 	let mut buf = Vec::new();
 	::xml::serialize(&mut buf, dlna::types::Envelope{body})
 		.chain_err(|| "Error serializing XML.")?;
@@ -332,10 +412,10 @@ fn respond_soap_fault(msg: &str) -> BoxedResponse {
 }
 
 fn call_not_found(req: dlna::Request) -> BoxedResponse {
-	let prefix = format!("404 {:?}", req.req);
+	eprintln!("404 {:?}", req.req);
 	Box::new(req.body_str_lossy()
-		.and_then(move |body| {
-			eprintln!("{}\n{}\n404 End\n", prefix, body);
+		.and_then(move |_body| {
+			// eprintln!("404 body\n{}\n404 End\n", _body);
 			Ok(hyper::Response::new()
 				.with_status(hyper::StatusCode::NotFound))
 		}))
@@ -360,8 +440,7 @@ impl hyper::server::Service for ServerRef {
 	type Future = Box<futures::Future<Item=hyper::Response, Error=hyper::Error>>;
 	
 	fn call(&self, req: Self::Request) -> Self::Future {
-		if !req.path().ends_with(".xml") { eprintln!("{:?}", req) }
-		
+		// eprintln!("Request: {:#?}", req);
 		let req = dlna::Request::new(req);
 		Box::new(self.call_root(req).or_else(|e| {
 			eprintln!("{}", e.display_chain());
