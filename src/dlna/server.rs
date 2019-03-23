@@ -301,6 +301,7 @@ impl ServerRef {
 			}
 		}
 
+		containers.sort_by(|l, r| crate::human_order(l.id(), r.id()));
 		items.sort_by(|l, r| crate::human_order(l.id(), r.id()));
 		support.sort_by(|l, r| crate::human_order(l.id(), r.id()));
 
