@@ -12,11 +12,11 @@ const CHROMECAST: Device = Device {
 	container: &[ContainerFormat::MKV],
 	video: &[VideoFormat::H264, VideoFormat::VP8],
 	audio: &[
+		AudioFormat::Opus,
 		AudioFormat::Vorbis,
 		AudioFormat::AAC,
 		AudioFormat::FLAC,
 		AudioFormat::MP3,
-		AudioFormat::Opus,
 	],
 };
 
@@ -25,7 +25,7 @@ const CHROMECAST_ULTRA: Device = Device {
 	video: &[VideoFormat::H264, VideoFormat::HEVC, VideoFormat::VP8],
 	audio: &[
 		// AudioFormat::AAC, // Fails to play.
-		// AudioFormat::Opus, // Causes choppy video.
+		AudioFormat::Opus,
 		AudioFormat::Vorbis,
 		AudioFormat::FLAC,
 		AudioFormat::MP3,
