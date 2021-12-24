@@ -35,8 +35,8 @@ mod xml;
 
 pub use crate::error::{Error,ErrorKind,Result};
 
-pub type Future<T> = Box<futures::Future<Item=T, Error=Error> + Send>;
-pub type ByteStream = Box<futures::Stream<Item=Vec<u8>, Error=Error> + Send>;
+pub type Future<T> = Box<dyn futures::Future<Item=T, Error=Error> + Send>;
+pub type ByteStream = Box<dyn futures::Stream<Item=Vec<u8>, Error=Error> + Send>;
 
 pub const CHUNK_SIZE: usize = 256 * 1024;
 
@@ -115,9 +115,9 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 	fn title(&self) -> String;
 
 	fn is_dir(&self) -> bool;
-	fn lookup(&self, id: &str) -> Result<Box<Object>>;
+	fn lookup(&self, id: &str) -> Result<Box<dyn Object>>;
 
-	fn children(&self) -> Result<Vec<Box<Object>>>;
+	fn children(&self) -> Result<Vec<Box<dyn Object>>>;
 
 	fn ffmpeg_input(&self, exec: &Executors) -> Result<crate::ffmpeg::Input> {
 		Ok(crate::ffmpeg::Input::Stream(self.body(exec)?.read_all()))
@@ -131,7 +131,7 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 		crate::ffmpeg::format(ffmpeg_input, exec)
 	}
 
-	fn body(&self, _exec: &Executors) -> Result<std::sync::Arc<Media>> {
+	fn body(&self, _exec: &Executors) -> Result<std::sync::Arc<dyn Media>> {
 		Err(ErrorKind::NotAFile(self.id().to_string()).into())
 	}
 
@@ -139,7 +139,7 @@ pub trait Object: Send + Sync + std::fmt::Debug {
 		&self, exec: &Executors,
 		source: &crate::ffmpeg::Format,
 		target: &crate::ffmpeg::Format
-	) -> Result<std::sync::Arc<Media>> {
+	) -> Result<std::sync::Arc<dyn Media>> {
 		crate::ffmpeg::transcode(source, target, self.ffmpeg_input(exec)?, exec)
 	}
 }

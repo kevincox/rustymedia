@@ -32,7 +32,7 @@ impl Object {
 		})
 	}
 	
-	pub fn new_boxed(root: Arc<Root>, path: std::path::PathBuf) -> crate::Result<Box<crate::Object>> {
+	pub fn new_boxed(root: Arc<Root>, path: std::path::PathBuf) -> crate::Result<Box<dyn crate::Object>> {
 		let r = Self::new(root, path)?;
 		Ok(Box::new(r))
 	}
@@ -90,7 +90,7 @@ impl crate::Object for Object {
 	
 	fn is_dir(&self) -> bool { self.path.is_dir() }
 	
-	fn lookup(&self, id: &str) -> crate::Result<Box<crate::Object>> {
+	fn lookup(&self, id: &str) -> crate::Result<Box<dyn crate::Object>> {
 		debug_assert_eq!(self.path, self.root.path);
 		
 		let mut base = self.path.clone();
@@ -105,7 +105,7 @@ impl crate::Object for Object {
 		Self::new_boxed(self.root.clone(), base)
 	}
 	
-	fn children(&self) -> crate::error::Result<Vec<Box<crate::Object>>> {
+	fn children(&self) -> crate::error::Result<Vec<Box<dyn crate::Object>>> {
 		self.path.read_dir()
 			.chain_err(|| "Getting children of local directory.")?
 			.map(|result| result
@@ -120,7 +120,7 @@ impl crate::Object for Object {
 		Ok(crate::ffmpeg::Input::Uri(&self.path))
 	}
 	
-	fn body(&self, _exec: &crate::Executors) -> crate::Result<std::sync::Arc<crate::Media>> {
+	fn body(&self, _exec: &crate::Executors) -> crate::Result<std::sync::Arc<dyn crate::Media>> {
 		Ok(std::sync::Arc::new(Media{path: self.path.clone()}))
 	}
 }

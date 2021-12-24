@@ -5,7 +5,7 @@ use std;
 #[derive(Debug)]
 struct Entry {
 	format: crate::ffmpeg::Format,
-	media: std::sync::Arc<crate::Media>,
+	media: std::sync::Arc<dyn crate::Media>,
 }
 
 #[derive(Debug)]
@@ -24,10 +24,10 @@ impl TranscodeCache {
 
 	pub fn get(&mut self,
 		exec: &crate::Executors,
-		item: &Box<crate::Object>,
+		item: &Box<dyn crate::Object>,
 		format: &crate::ffmpeg::Format,
 		device: &crate::ffmpeg::Device,
-	) -> crate::Result<std::sync::Arc<crate::Media>>
+	) -> crate::Result<std::sync::Arc<dyn crate::Media>>
 	{
 		if format.compatible_with(device) { return item.body(&exec) }
 

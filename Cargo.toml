@@ -2,7 +2,8 @@
 authors = ["Kevin Cox <kevincox@kevincox.ca>"]
 name = "rustymedia"
 version = "0.1.0"
-edition = "2018"
+edition = "2021"
+
 [dependencies]
 bytes = "0.4"
 docopt = "1.0"

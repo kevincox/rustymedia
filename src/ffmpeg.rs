@@ -356,7 +356,7 @@ impl futures::Stream for MediaStream {
 }
 
 pub fn transcode(source: &Format, target: &Format, input: Input, exec: &crate::Executors)
-	-> crate::Result<std::sync::Arc<crate::Media>> {
+	-> crate::Result<std::sync::Arc<dyn crate::Media>> {
 	let fd = nix::fcntl::open(
 		"/tmp",
 		{ use nix::fcntl::*; O_APPEND | O_CLOEXEC | O_TMPFILE | O_RDWR },
