@@ -429,7 +429,7 @@ fn call_method_not_allowed(req: dlna::Request) -> BoxedResponse {
 			.with_status(hyper::StatusCode::MethodNotAllowed))
 }
 
-type BoxedResponse = Box<futures::Future<Item = hyper::Response, Error = crate::error::Error>>;
+type BoxedResponse = Box<dyn futures::Future<Item = hyper::Response, Error = crate::error::Error>>;
 
 #[derive(Clone,Debug)]
 pub struct ServerRef(std::sync::Arc<Server>);
@@ -438,7 +438,7 @@ impl hyper::server::Service for ServerRef {
 	type Request = hyper::Request;
 	type Response = hyper::Response;
 	type Error = hyper::Error;
-	type Future = Box<futures::Future<Item=hyper::Response, Error=hyper::Error>>;
+	type Future = Box<dyn futures::Future<Item=hyper::Response, Error=hyper::Error>>;
 	
 	fn call(&self, req: Self::Request) -> Self::Future {
 		// eprintln!("Request: {:#?}", req);

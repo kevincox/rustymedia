@@ -54,7 +54,7 @@ impl Request {
 		return next_chunk
 	}
 	
-	fn body_vec(self) -> Box<Future<Item=Vec<u8>, Error=crate::error::Error>> {
+	fn body_vec(self) -> Box<dyn Future<Item=Vec<u8>, Error=crate::error::Error>> {
 		Box::new(self.req.body()
 			.then(|r| r.chain_err(|| "Parsing request body."))
 			.fold(Vec::new(), |mut v, chunk| {
@@ -63,7 +63,7 @@ impl Request {
 			}))
 	}
 	
-	fn body_str_lossy(self) -> Box<Future<Item=String, Error=crate::error::Error>> {
+	fn body_str_lossy(self) -> Box<dyn Future<Item=String, Error=crate::error::Error>> {
 		Box::new(self.req.body()
 			.then(|r| r.chain_err(|| "Parsing request body."))
 			.fold(String::new(), |mut s, chunk| {
@@ -73,7 +73,7 @@ impl Request {
 	}
 	
 	fn to_xml<B: 'static + serde::Deserialize<'static> + std::fmt::Debug>(self)
-		-> Box<Future<Item=types::Envelope<B>, Error=crate::error::Error>>
+		-> Box<dyn Future<Item=types::Envelope<B>, Error=crate::error::Error>>
 	{
 		Box::new(self.body_vec()
 			.and_then(|v| {
